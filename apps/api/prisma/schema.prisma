@@ -1,0 +1,357 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id            String         @id @default(uuid())
+  email         String         @unique
+  name          String?
+  avatarUrl     String?
+  firebaseUid   String         @unique
+  plan          Plan           @default(FREE)
+  booksCount    Int            @default(0)
+  bio                   String?
+  website               String?
+  location              String?
+  twitter               String?
+  linkedin              String?
+  instagram             String?
+  academicBackground    String?
+  professionalBackground String?
+  expertise             String[]
+  isVerified            Boolean  @default(false)
+  profilePhoto          String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  books         Book[]
+  subscriptions Subscription[]
+  purchases     BookPurchase[]
+  reviews       BookReview[]
+  bookFollows   BookFollow[]
+  following     WriterFollow[] @relation("follower")
+  followers     WriterFollow[] @relation("writer")
+  activityFeed  ActivityFeed[]
+  earnings      WriterEarning[]
+  groupsCreated   UserGroup[]    @relation("groupCreator")
+  posts           Post[]
+  postLikes       PostLike[]
+  postComments    PostComment[]
+  postReposts     PostRepost[]
+  notifications   Notification[]
+  conversations1  Conversation[] @relation("conversation_user1")
+  conversations2  Conversation[] @relation("conversation_user2")
+  sentMessages          DirectMessage[]
+  connectionsAsSender   Connection[] @relation("connectionSender")
+  connectionsAsReceiver Connection[] @relation("connectionReceiver")
+  authorGroupsCreated AuthorGroup[] @relation("authorGroupCreator")
+  authorGroupMemberships AuthorGroupMember[]
+  groupMemberships GroupMember[]
+  groupMessages   GroupMessage[]
+}
+
+model Book {
+  id          String      @id @default(uuid())
+  title       String
+  subtitle    String?
+  synopsis    String?
+  genre       String
+  tone        String
+  audience    String?
+  language    String      @default("English")
+  status      BookStatus  @default(DRAFT)
+  coverUrl    String?
+  userId      String
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chapters    Chapter[]
+  published   PublishedBook?
+  follows     BookFollow[]
+  authorGroups AuthorGroup[]
+  posts        Post[]         @relation("postBook")
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model Chapter {
+  id        String   @id @default(uuid())
+  number    Int
+  title     String
+  summary   String?
+  content   String?
+  bookId    String
+  book      Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Subscription {
+  id                   String    @id @default(uuid())
+  userId               String
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stripeCustomerId     String?
+  stripePriceId        String?
+  stripeSubscriptionId String?
+  plan                 Plan      @default(FREE)
+  status               String    @default("active")
+  currentPeriodEnd     DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+}
+
+model Setting {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model PublishedBook {
+  id            String         @id @default(uuid())
+  bookId        String         @unique
+  book          Book           @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  price         Float          @default(0)
+  isPublic      Boolean        @default(true)
+  isFeatured    Boolean        @default(false)
+  totalSales    Int            @default(0)
+  totalEarnings Float          @default(0)
+  publishedAt   DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  purchases     BookPurchase[]
+  reviews       BookReview[]
+}
+
+model BookPurchase {
+  id              String        @id @default(uuid())
+  bookId          String
+  publishedBook   PublishedBook @relation(fields: [bookId], references: [bookId], onDelete: Cascade)
+  buyerId         String
+  buyer           User          @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  amount          Float
+  platformFee     Float
+  writerEarning   Float
+  stripeSessionId String?
+  createdAt       DateTime      @default(now())
+}
+
+model BookReview {
+  id            String        @id @default(uuid())
+  bookId        String
+  publishedBook PublishedBook @relation(fields: [bookId], references: [bookId], onDelete: Cascade)
+  reviewerId    String
+  reviewer      User          @relation(fields: [reviewerId], references: [id], onDelete: Cascade)
+  rating        Int
+  comment       String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+}
+
+model BookFollow {
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookId    String
+  book      Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@id([userId, bookId])
+}
+
+model WriterFollow {
+  followerId String
+  follower   User     @relation("follower", fields: [followerId], references: [id], onDelete: Cascade)
+  writerId   String
+  writer     User     @relation("writer", fields: [writerId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@id([followerId, writerId])
+}
+
+model ActivityFeed {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String
+  message   String
+  bookId    String?
+  metadata  String?
+  createdAt DateTime @default(now())
+}
+
+model WriterEarning {
+  id        String   @id @default(uuid())
+  writerId  String
+  writer    User     @relation(fields: [writerId], references: [id], onDelete: Cascade)
+  amount    Float
+  status    String   @default("pending")
+  bookId    String?
+  createdAt DateTime @default(now())
+}
+
+enum Plan {
+  FREE
+  AUTHOR
+  PUBLISHER
+}
+
+enum BookStatus {
+  DRAFT
+  GENERATING
+  COMPLETE
+  FAILED
+}
+
+model UserGroup {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  coverUrl    String?
+  isPublic    Boolean  @default(true)
+  createdBy   String
+  creator     User     @relation("groupCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+  members     GroupMember[]
+  messages    GroupMessage[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model GroupMember {
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  groupId   String
+  group     UserGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  role      String    @default("member")
+  joinedAt  DateTime  @default(now())
+
+  @@id([userId, groupId])
+}
+
+model GroupMessage {
+  id        String    @id @default(uuid())
+  groupId   String
+  group     UserGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  message   String
+  createdAt DateTime  @default(now())
+}
+
+model AuthorGroup {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  bookId      String?
+  book        Book?    @relation(fields: [bookId], references: [id], onDelete: SetNull)
+  createdBy   String
+  creator     User     @relation("authorGroupCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+  members     AuthorGroupMember[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model AuthorGroupMember {
+  userId      String
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  groupId     String
+  group       AuthorGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  role        String      @default("writer")
+  joinedAt    DateTime    @default(now())
+
+  @@id([userId, groupId])
+}
+
+model Post {
+  id            String        @id @default(uuid())
+  userId        String
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  content       String
+  bookId        String?
+  book          Book?         @relation("postBook", fields: [bookId], references: [id], onDelete: SetNull)
+  hashtags      String[]
+  likesCount    Int           @default(0)
+  commentsCount Int           @default(0)
+  repostsCount  Int           @default(0)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  likes         PostLike[]
+  comments      PostComment[]
+  reposts       PostRepost[]
+}
+
+model PostLike {
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  postId    String
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@id([userId, postId])
+}
+
+model PostComment {
+  id        String   @id @default(uuid())
+  postId    String
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  content   String
+  createdAt DateTime @default(now())
+}
+
+model PostRepost {
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  postId    String
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@id([userId, postId])
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String
+  message   String
+  isRead    Boolean  @default(false)
+  linkId    String?
+  createdAt DateTime @default(now())
+}
+
+model Conversation {
+  id        String          @id @default(uuid())
+  user1Id   String
+  user1     User            @relation("conversation_user1", fields: [user1Id], references: [id], onDelete: Cascade)
+  user2Id   String
+  user2     User            @relation("conversation_user2", fields: [user2Id], references: [id], onDelete: Cascade)
+  messages  DirectMessage[]
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+}
+
+model DirectMessage {
+  id             String       @id @default(uuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId       String
+  sender         User         @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  content        String
+  isRead         Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+}
+
+model Connection {
+  id         String   @id @default(uuid())
+  senderId   String
+  sender     User     @relation("connectionSender", fields: [senderId], references: [id], onDelete: Cascade)
+  receiverId String
+  receiver   User     @relation("connectionReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+  status     String   @default("PENDING")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([senderId, receiverId])
+}
