@@ -1,7 +1,7 @@
 # 📚 Universal Book
 
 > **AI-Powered Social Publishing Marketplace**  
-> Supervised by Dr. Levin Kuhlmann (Monash University) · Developed by Nuruzzaman Faruqui · March 2026
+> Supervised by Dr. Levin Kuhlmann (Monash University) · March 2026
 
 ## 🌐 Live URLs
 
