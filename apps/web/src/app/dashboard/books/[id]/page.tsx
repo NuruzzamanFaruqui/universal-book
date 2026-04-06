@@ -1,4 +1,5 @@
 'use client';
+import AppNav from '@/components/AppNav';
 export const dynamic = 'force-dynamic';
 
 import { useEffect, useState } from 'react';
@@ -115,38 +116,7 @@ export default function BookDetailPage() {
 
   return (
     <div className="min-h-screen bg-slate-900 text-white">
-      <nav className="flex items-center justify-between px-8 py-4 border-b border-slate-700">
-        <Link href="/dashboard" className="flex items-center gap-2 text-slate-400 hover:text-white">
-          <ArrowLeft size={18} /> Back to Dashboard
-        </Link>
-        <div className="flex items-center gap-3">
-          {isPublished ? (
-            <>
-              <Link href={`/books/${bookId}`} target="_blank"
-                className="flex items-center gap-2 px-4 py-2 border border-green-600 text-green-400 rounded-lg text-sm hover:bg-green-900/20 transition">
-                <Globe size={14} /> View Public Page
-              </Link>
-              <button onClick={handleUnpublish}
-                className="flex items-center gap-2 px-4 py-2 border border-red-700 text-red-400 rounded-lg text-sm hover:bg-red-900/20 transition">
-                <Lock size={14} /> Unpublish
-              </button>
-            </>
-          ) : (
-            <button
-              onClick={() => setShowPublishModal(true)}
-              disabled={!allChaptersGenerated}
-              className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-500 disabled:opacity-50 rounded-lg text-sm font-semibold transition"
-              title={!allChaptersGenerated ? 'Generate all chapters first' : ''}>
-              <Globe size={14} /> Publish to Marketplace
-            </button>
-          )}
-          <Link href={`/dashboard/books/${bookId}/edit`} className="px-4 py-2 border border-slate-600 hover:border-blue-500 rounded-lg text-sm font-semibold transition">✏️ Edit Chapters</Link>
-          <Link href={`/dashboard/books/${bookId}/export`}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-semibold">
-            Export Book
-          </Link>
-        </div>
-      </nav>
+      <AppNav />
 
       {/* Publish Modal */}
       {showPublishModal && (

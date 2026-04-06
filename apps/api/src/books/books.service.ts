@@ -1,12 +1,14 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { AiService } from '../ai/ai.service';
+import { PaymentsService } from '../payments/payments.service';
 
 @Injectable()
 export class BooksService {
   constructor(
     private prisma: PrismaService,
     private aiService: AiService,
+    private paymentsService: PaymentsService,
   ) {}
 
   async getAllBooks(userId: string) {
@@ -35,20 +37,49 @@ export class BooksService {
     audience: string;
     chaptersCount: number;
     language: string;
+    title?: string;
+    synopsis?: string;
+    outline?: any;
   }) {
-    const outline = await this.aiService.generateOutline(
-      data.topic,
-      data.genre,
-      data.tone,
-      data.audience,
-      data.chaptersCount,
-    );
+    // Charge $5 credits before generation
+    await this.paymentsService.chargeForAiGeneration(userId);
+
+    // If user selected title/outline/synopsis from wizard, use them
+    // Otherwise fall back to AI-generated outline
+    let bookTitle: string;
+    let bookSubtitle: string | undefined;
+    let bookSynopsis: string | undefined;
+    let chapters: any[];
+
+    if (data.title && data.outline) {
+      // User went through the wizard — use their selections
+      bookTitle = data.title;
+      bookSynopsis = data.synopsis || undefined;
+      chapters = data.outline.chapters.map((ch: any, index: number) => ({
+        number: index + 1,
+        title: ch.title,
+        summary: ch.description || ch.summary || '',
+      }));
+    } else {
+      // Fallback: generate everything from scratch
+      const outline = await this.aiService.generateOutline(
+        data.topic,
+        data.genre,
+        data.tone,
+        data.audience,
+        data.chaptersCount,
+      );
+      bookTitle = outline.title;
+      bookSubtitle = outline.subtitle;
+      bookSynopsis = outline.synopsis;
+      chapters = outline.chapters;
+    }
 
     const book = await this.prisma.book.create({
       data: {
-        title: outline.title,
-        subtitle: outline.subtitle,
-        synopsis: outline.synopsis,
+        title: bookTitle,
+        subtitle: bookSubtitle || null,
+        synopsis: bookSynopsis || null,
         genre: data.genre,
         tone: data.tone,
         audience: data.audience,
@@ -56,10 +87,10 @@ export class BooksService {
         status: 'GENERATING',
         userId,
         chapters: {
-          create: outline.chapters.map((ch: any) => ({
+          create: chapters.map((ch: any) => ({
             number: ch.number,
             title: ch.title,
-            summary: ch.summary,
+            summary: ch.summary || '',
           })),
         },
       },
@@ -128,19 +159,25 @@ export class BooksService {
 
   async updateChapterContent(bookId: string, chapterId: string, userId: string, content: string) {
     const book = await this.prisma.book.findFirst({ where: { id: bookId, userId } });
-    if (!book) throw new Error("Book not found");
+    if (!book) throw new Error('Book not found');
     return this.prisma.chapter.update({
       where: { id: chapterId },
       data: { content },
     });
   }
 
-  async importBook(userId: string, data: { title: string; genre: string; audience: string; content: string; fileName: string }) {
-    const { title, genre, audience, content, fileName } = data;
-    // Parse content into chapters (simple split by chapter markers)
+  async importBook(userId: string, data: {
+    title: string;
+    genre: string;
+    audience: string;
+    content: string;
+    fileName: string;
+  }) {
+    const { title, genre, audience, content } = data;
     const chapterRegex = /(?:^|\n)(?:Chapter|CHAPTER|Ch\.?)\s*(\d+)[:\s]+([^\n]+)/gm;
     const matches = [...content.matchAll(chapterRegex)];
     let chapters: any[] = [];
+
     if (matches.length > 0) {
       for (let i = 0; i < matches.length; i++) {
         const start = matches[i].index! + matches[i][0].length;
@@ -148,24 +185,29 @@ export class BooksService {
         chapters.push({
           number: parseInt(matches[i][1]),
           title: matches[i][2].trim(),
-          content: `<p>${content.slice(start, end).trim().replace(/\n\n+/g, "</p><p>").replace(/\n/g, " ")}</p>`,
+          content: `<p>${content.slice(start, end).trim().replace(/\n\n+/g, '</p><p>').replace(/\n/g, ' ')}</p>`,
         });
       }
     } else {
-      // No chapters found - treat whole file as single chapter
-      chapters = [{ number: 1, title: "Chapter 1", content: `<p>${content.replace(/\n\n+/g, "</p><p>").replace(/\n/g, " ")}</p>` }];
+      chapters = [{
+        number: 1,
+        title: 'Chapter 1',
+        content: `<p>${content.replace(/\n\n+/g, '</p><p>').replace(/\n/g, ' ')}</p>`,
+      }];
     }
+
     const book = await this.prisma.book.create({
       data: {
         title,
         genre,
-        tone: "Engaging & Accessible",
+        tone: 'Engaging & Accessible',
         audience,
-        language: "English",
-        status: "COMPLETE",
+        language: 'English',
+        status: 'COMPLETE',
         userId,
       },
     });
+
     for (const ch of chapters) {
       await this.prisma.chapter.create({
         data: {
@@ -176,6 +218,7 @@ export class BooksService {
         },
       });
     }
+
     return book;
   }
 
@@ -183,5 +226,14 @@ export class BooksService {
     return this.prisma.book.delete({
       where: { id, userId },
     });
+  }
+
+  async checkCanCreateAiBook(userId: string) {
+    const balance = await this.paymentsService.getCreditBalance(userId);
+    return {
+      canCreate: balance >= 5,
+      balance,
+      cost: 5,
+    };
   }
 }

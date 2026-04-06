@@ -1,10 +1,11 @@
 'use client';
+import AppNav from '@/components/AppNav';
 export const dynamic = 'force-dynamic';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { BookOpen, ArrowLeft, ArrowRight, Sparkles, PenSquare, Upload, Check, Loader } from 'lucide-react';
+import { BookOpen, ArrowLeft, ArrowRight, Sparkles, PenSquare, Upload, Check, Loader, Wallet, AlertCircle } from 'lucide-react';
 
 const API_URL = "https://api.universal-book.com";
 
@@ -25,20 +26,30 @@ type CreationMode = 'ai' | 'self' | 'import' | null;
 export default function NewBookPage() {
   const router = useRouter();
   const [mode, setMode] = useState<CreationMode>(null);
+  const [creditCheck, setCreditCheck] = useState<{ canCreate: boolean; balance: number; cost: number } | null>(null);
+  const [checkingCredits, setCheckingCredits] = useState(true);
+
+  useEffect(() => {
+    checkCredits();
+  }, []);
+
+  const checkCredits = async () => {
+    try {
+      const token = await getFreshToken();
+      if (!token) { router.push('/auth/login'); return; }
+      const res = await fetch(`${API_URL}/api/books/can-create-ai-book`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) setCreditCheck(await res.json());
+    } catch (e) {}
+    setCheckingCredits(false);
+  };
 
   return (
     <div className="min-h-screen bg-slate-900 text-white">
-      <nav className="flex items-center justify-between px-8 py-4 border-b border-slate-700">
-        <Link href="/dashboard" className="flex items-center gap-2 text-slate-400 hover:text-white transition">
-          <ArrowLeft size={18} /> Back to Dashboard
-        </Link>
-        <div className="flex items-center gap-2 font-bold text-lg">
-          <BookOpen className="text-blue-400" size={24} /> Create Your Book
-        </div>
-        <div className="w-32" />
-      </nav>
+      <AppNav />
 
-      {!mode && <ModeSelector onSelect={setMode} />}
+      {!mode && <ModeSelector onSelect={setMode} creditCheck={creditCheck} checkingCredits={checkingCredits} />}
       {mode === 'ai' && <AIAuthorFlow onBack={() => setMode(null)} router={router} />}
       {mode === 'self' && <SelfAuthorFlow onBack={() => setMode(null)} router={router} />}
       {mode === 'import' && <ImportFlow onBack={() => setMode(null)} router={router} />}
@@ -47,13 +58,55 @@ export default function NewBookPage() {
 }
 
 // ============ MODE SELECTOR ============
-function ModeSelector({ onSelect }: { onSelect: (mode: CreationMode) => void }) {
+function ModeSelector({
+  onSelect,
+  creditCheck,
+  checkingCredits,
+}: {
+  onSelect: (mode: CreationMode) => void;
+  creditCheck: { canCreate: boolean; balance: number; cost: number } | null;
+  checkingCredits: boolean;
+}) {
   return (
     <div className="max-w-5xl mx-auto px-8 py-16">
       <div className="text-center mb-12">
         <h1 className="text-4xl font-extrabold mb-4">How would you like to create your book?</h1>
         <p className="text-slate-400 text-lg">Choose the method that works best for you</p>
       </div>
+
+      {/* Credit balance banner for AI mode */}
+      {!checkingCredits && creditCheck && (
+        <div className={`flex items-center justify-between gap-4 rounded-xl border p-4 mb-8 ${
+          creditCheck.canCreate
+            ? 'bg-emerald-900/20 border-emerald-700'
+            : 'bg-red-900/20 border-red-700'
+        }`}>
+          <div className="flex items-center gap-3">
+            {creditCheck.canCreate
+              ? <Wallet className="text-emerald-400" size={22} />
+              : <AlertCircle className="text-red-400" size={22} />
+            }
+            <div>
+              <p className={`font-semibold ${creditCheck.canCreate ? 'text-emerald-400' : 'text-red-400'}`}>
+                {creditCheck.canCreate
+                  ? `You have $${creditCheck.balance.toFixed(2)} credits — AI book generation costs $${creditCheck.cost}`
+                  : `Insufficient credits — AI book generation costs $${creditCheck.cost}, you have $${creditCheck.balance.toFixed(2)}`
+                }
+              </p>
+              {!creditCheck.canCreate && (
+                <p className="text-slate-400 text-sm">Top up your credits to use AI Author mode</p>
+              )}
+            </div>
+          </div>
+          <Link
+            href="/account/topup"
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap"
+          >
+            {creditCheck.canCreate ? 'Add More' : 'Top Up Now'}
+          </Link>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {[
           {
@@ -64,7 +117,9 @@ function ModeSelector({ onSelect }: { onSelect: (mode: CreationMode) => void }) 
             description: 'Let Claude AI write your complete book from scratch. Choose your topic, genre, and style — AI handles the rest.',
             features: ['AI-generated titles & outlines', 'Chapter-by-chapter writing', 'Professional formatting', 'Best for: Quick books, research, non-fiction'],
             color: 'border-purple-700 hover:border-purple-500 bg-purple-900/10',
-            btnColor: 'bg-purple-600 hover:bg-purple-500',
+            btnColor: creditCheck?.canCreate === false ? 'bg-slate-600 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-500',
+            disabled: creditCheck?.canCreate === false,
+            badge: `$${creditCheck?.cost ?? 5} credits`,
           },
           {
             mode: 'self' as CreationMode,
@@ -75,6 +130,8 @@ function ModeSelector({ onSelect }: { onSelect: (mode: CreationMode) => void }) 
             features: ['Professional book editor', 'Real-time collaboration', 'Optional AI assistance', 'Best for: Experienced writers'],
             color: 'border-blue-700 hover:border-blue-500 bg-blue-900/10',
             btnColor: 'bg-blue-600 hover:bg-blue-500',
+            disabled: false,
+            badge: 'Free',
           },
           {
             mode: 'import' as CreationMode,
@@ -85,12 +142,22 @@ function ModeSelector({ onSelect }: { onSelect: (mode: CreationMode) => void }) 
             features: ['Upload .docx, .txt, .pdf', 'Auto-detect chapters', 'Edit after import', 'Best for: Existing manuscripts'],
             color: 'border-green-700 hover:border-green-500 bg-green-900/10',
             btnColor: 'bg-green-600 hover:bg-green-500',
+            disabled: false,
+            badge: 'Free',
           },
         ].map(option => (
-          <div key={option.mode} className={`border-2 rounded-2xl p-6 transition cursor-pointer ${option.color}`}
-            onClick={() => onSelect(option.mode)}>
+          <div
+            key={option.mode}
+            className={`border-2 rounded-2xl p-6 transition ${option.disabled ? 'opacity-60' : 'cursor-pointer'} ${option.color}`}
+            onClick={() => !option.disabled && onSelect(option.mode)}
+          >
             <div className="flex justify-center mb-4">{option.icon}</div>
-            <h2 className="text-xl font-bold text-center mb-1">{option.title}</h2>
+            <div className="flex items-center justify-center gap-2 mb-1">
+              <h2 className="text-xl font-bold text-center">{option.title}</h2>
+              <span className={`text-xs px-2 py-0.5 rounded-full ${
+                option.badge === 'Free' ? 'bg-green-900/50 text-green-400' : 'bg-purple-900/50 text-purple-400'
+              }`}>{option.badge}</span>
+            </div>
             <p className="text-slate-400 text-sm text-center mb-4">{option.subtitle}</p>
             <p className="text-slate-300 text-sm mb-5 leading-relaxed">{option.description}</p>
             <ul className="space-y-2 mb-6">
@@ -100,8 +167,11 @@ function ModeSelector({ onSelect }: { onSelect: (mode: CreationMode) => void }) 
                 </li>
               ))}
             </ul>
-            <button className={`w-full py-3 rounded-xl font-bold text-white transition ${option.btnColor}`}>
-              Get Started →
+            <button
+              disabled={option.disabled}
+              className={`w-full py-3 rounded-xl font-bold text-white transition ${option.btnColor}`}
+            >
+              {option.disabled ? '⚠️ Insufficient Credits' : 'Get Started →'}
             </button>
           </div>
         ))}
@@ -218,12 +288,14 @@ function AIAuthorFlow({ onBack, router }: { onBack: () => void; router: any }) {
           title: finalTitle, synopsis, outline,
         }),
       });
-      if (!res.ok) throw new Error('Failed to create book');
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.message || 'Failed to create book');
+      }
       const book = await res.json();
       setBookId(book.id);
       setStep(5);
       setLoading(false);
-      // Auto-generate chapters
       await autoGenerateChapters(book.id, book.chapters);
     } catch (err: any) { setError(err.message); setLoading(false); }
   };
@@ -263,6 +335,16 @@ function AIAuthorFlow({ onBack, router }: { onBack: () => void; router: any }) {
           </div>
         ))}
       </div>
+
+      {/* Credit charge notice */}
+      {step === 4 && (
+        <div className="flex items-center gap-3 bg-purple-900/20 border border-purple-700 rounded-xl p-4 mb-6">
+          <Wallet className="text-purple-400 shrink-0" size={20} />
+          <p className="text-purple-300 text-sm">
+            <strong>$5.00 credits</strong> will be deducted from your balance when you click "Start Writing My Book"
+          </p>
+        </div>
+      )}
 
       {error && <div className="bg-red-500/10 border border-red-500 text-red-400 rounded-lg p-3 mb-6 text-sm">{error}</div>}
 
@@ -354,9 +436,7 @@ function AIAuthorFlow({ onBack, router }: { onBack: () => void; router: any }) {
               className="w-full bg-slate-700 border border-slate-600 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-purple-500" />
           </div>
           <div className="flex gap-3">
-            <button onClick={() => setStep(1)} className="px-6 py-3 border border-slate-600 rounded-xl text-slate-400 hover:text-white transition">
-              ← Back
-            </button>
+            <button onClick={() => setStep(1)} className="px-6 py-3 border border-slate-600 rounded-xl text-slate-400 hover:text-white transition">← Back</button>
             <button onClick={generateOutlines} disabled={(!selectedTitle && !customTitle) || loading}
               className="flex-1 py-3 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 rounded-xl font-bold transition flex items-center justify-center gap-2">
               {loading ? <><Loader className="animate-spin" size={18} /> Generating outlines...</> : <>Generate Outlines <ArrowRight size={18} /></>}
@@ -433,7 +513,7 @@ function AIAuthorFlow({ onBack, router }: { onBack: () => void; router: any }) {
             <button onClick={() => setStep(3)} className="px-6 py-3 border border-slate-600 rounded-xl text-slate-400 hover:text-white transition">← Back</button>
             <button onClick={createBookAndGenerate} disabled={loading}
               className="flex-1 py-3 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 rounded-xl font-bold transition flex items-center justify-center gap-2">
-              {loading ? <><Loader className="animate-spin" size={18} /> Creating book...</> : <>🚀 Start Writing My Book</>}
+              {loading ? <><Loader className="animate-spin" size={18} /> Creating book & charging $5...</> : <>🚀 Start Writing My Book — $5.00</>}
             </button>
           </div>
         </div>
@@ -444,7 +524,8 @@ function AIAuthorFlow({ onBack, router }: { onBack: () => void; router: any }) {
         <div className="bg-slate-800 border border-slate-700 rounded-2xl p-8 text-center">
           <div className="text-6xl mb-6">✍️</div>
           <h2 className="text-2xl font-bold mb-2">AI is writing your book...</h2>
-          <p className="text-slate-400 mb-8">Sit back and relax. Your chapters are being written one by one.</p>
+          <p className="text-slate-400 mb-2">Sit back and relax. Your chapters are being written one by one.</p>
+          <p className="text-emerald-400 text-sm mb-8">✓ $5.00 credits charged successfully</p>
           <div className="max-w-md mx-auto space-y-3 mb-8">
             {Array.from({ length: chaptersCount }, (_, i) => (
               <div key={i} className={`flex items-center gap-3 p-3 rounded-xl border ${
@@ -684,7 +765,6 @@ function ImportFlow({ onBack, router }: { onBack: () => void; router: any }) {
         <p className="text-slate-400 mb-6">Upload your existing manuscript and publish it on Universal Book</p>
         {error && <div className="bg-red-500/10 border border-red-500 text-red-400 rounded-lg p-3 mb-4 text-sm">{error}</div>}
 
-        {/* File Upload */}
         <div
           onDragOver={e => { e.preventDefault(); setDragOver(true); }}
           onDragLeave={() => setDragOver(false)}

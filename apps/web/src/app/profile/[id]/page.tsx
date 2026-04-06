@@ -1,4 +1,5 @@
 'use client';
+import AppNav from '@/components/AppNav';
 export const dynamic = 'force-dynamic';
 
 import { useEffect, useState } from 'react';
@@ -103,17 +104,7 @@ export default function ProfilePage() {
 
   return (
     <div className="min-h-screen bg-slate-900 text-white">
-      <nav className="sticky top-0 z-50 bg-slate-900/95 backdrop-blur border-b border-slate-800">
-        <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-4">
-          <Link href="/feed" className="text-slate-400 hover:text-white transition">
-            <ArrowLeft size={20} />
-          </Link>
-          <div>
-            <div className="font-bold">{profile.name}</div>
-            <div className="text-slate-400 text-xs">{posts.length} posts</div>
-          </div>
-        </div>
-      </nav>
+      <AppNav />
 
       <div className="max-w-3xl mx-auto px-4 py-6">
         {/* Profile Header */}

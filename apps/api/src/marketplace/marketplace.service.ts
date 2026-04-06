@@ -74,8 +74,8 @@ export class MarketplaceService {
     });
   }
 
-  async getPublishedBookById(bookId: string) {
-    return this.prisma.publishedBook.findUnique({
+async getPublishedBookById(bookId: string, userId?: string) {
+    const published = await this.prisma.publishedBook.findUnique({
       where: { bookId },
       include: {
         book: {
@@ -97,6 +97,30 @@ export class MarketplaceService {
         },
       },
     });
+
+    if (!published) return null;
+
+    // Check if user has purchased or is the author
+    let hasAccess = false;
+    if (userId) {
+      const isAuthor = published.book.userId === userId;
+      const purchase = await this.prisma.bookPurchase.findFirst({
+        where: { bookId, buyerId: userId },
+      });
+      hasAccess = isAuthor || !!purchase;
+    }
+
+    // Only return content for chapter 1 (free preview) unless user has access
+    const chapters = published.book.chapters.map((ch: any) => ({
+      ...ch,
+      content: ch.number === 1 || hasAccess ? ch.content : null,
+    }));
+
+    return {
+      ...published,
+      book: { ...published.book, chapters },
+      hasAccess,
+    };
   }
 
   async publishBook(bookId: string, userId: string, price: number) {

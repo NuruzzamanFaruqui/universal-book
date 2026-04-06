@@ -2,542 +2,825 @@
 export const dynamic = 'force-dynamic';
 
 import { useEffect, useState, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { BookOpen, Heart, MessageCircle, Repeat2, Send, Trash2, Hash, Users, Bell, TrendingUp, X, LogOut, Home, PenSquare, Library, Menu } from 'lucide-react';
+import {
+  BookOpen, PenSquare, Heart, MessageCircle, Repeat2,
+  Sparkles, Upload, Wallet, TrendingUp, Users, Plus,
+  LayoutDashboard, Library, DollarSign, Link2, Search
+} from 'lucide-react';
+import AppNav from '@/components/AppNav';
+import BottomTabBar from '@/components/BottomTabBar';
 
-const API_URL = "https://api.universal-book.com";
+const API_URL = 'https://api.universal-book.com';
 
 async function getFreshToken(): Promise<string | null> {
   try {
     const { auth } = await import('@/lib/firebase');
     if (auth?.currentUser) return await auth.currentUser.getIdToken(true);
   } catch (e) {}
-  return localStorage.getItem('ub_token');
+  return null;
 }
 
 export default function FeedPage() {
   const router = useRouter();
-  const [posts, setPosts] = useState<any[]>([]);
+  const searchParams = useSearchParams();
+  const initialTab = searchParams.get('tab') || 'feed';
+  const [activeTab, setActiveTab] = useState(initialTab);
   const [user, setUser] = useState<any>(null);
+  const [creditBalance, setCreditBalance] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
-  const [content, setContent] = useState('');
-  const [selectedBook, setSelectedBook] = useState<any>(null);
-  const [myBooks, setMyBooks] = useState<any[]>([]);
-  const [posting, setPosting] = useState(false);
-  const [suggested, setSuggested] = useState<any[]>([]);
-  const [trending, setTrending] = useState<any[]>([]);
-  const [notifications, setNotifications] = useState<any[]>([]);
-  const [expandedComments, setExpandedComments] = useState<string[]>([]);
-  const [commentText, setCommentText] = useState<Record<string, string>>({});
-  const [showBookPicker, setShowBookPicker] = useState(false);
-  const [activeTab, setActiveTab] = useState<'feed' | 'explore'>('feed');
-  const [showMobileMenu, setShowMobileMenu] = useState(false);
 
   useEffect(() => {
-    const token = localStorage.getItem('ub_token');
-    if (!token) { router.push('/auth/login'); return; }
-    fetchAll();
+    initAuth();
   }, []);
 
-  const fetchAll = async () => {
-    try {
-      const token = await getFreshToken();
-      const [userRes, feedRes, booksRes, suggestedRes, trendingRes, notifRes] = await Promise.all([
-        fetch(`${API_URL}/api/users/me`, { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch(`${API_URL}/api/social/feed`, { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch(`${API_URL}/api/books`, { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch(`${API_URL}/api/social/suggested-users`, { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch(`${API_URL}/api/social/trending`),
-        fetch(`${API_URL}/api/social/notifications`, { headers: { 'Authorization': `Bearer ${token}` } }),
-      ]);
-      if (userRes.ok) setUser(await userRes.json());
-      if (feedRes.ok) { const data = await feedRes.json(); setPosts(data.posts || []); }
-      if (booksRes.ok) setMyBooks(await booksRes.json());
-      if (suggestedRes.ok) setSuggested(await suggestedRes.json());
-      if (trendingRes.ok) setTrending(await trendingRes.json());
-      if (notifRes.ok) setNotifications(await notifRes.json());
-    } catch (e) {}
-    finally { setLoading(false); }
-  };
-
-  const fetchExplore = async () => {
-    try {
-      const res = await fetch(`${API_URL}/api/social/explore`);
-      if (res.ok) { const data = await res.json(); setPosts(data.posts || []); }
-    } catch (e) {}
-  };
-
-  const handleLogout = async () => {
+  const initAuth = async () => {
     try {
       const { auth } = await import('@/lib/firebase');
-      if (auth) { const { signOut } = await import('firebase/auth'); await signOut(auth); }
+      if (!auth) { router.push('/auth/login'); return; }
+      const { onAuthStateChanged } = await import('firebase/auth');
+      onAuthStateChanged(auth, async (firebaseUser) => {
+        if (!firebaseUser) { router.push('/auth/login'); return; }
+        const token = await firebaseUser.getIdToken();
+        localStorage.setItem('ub_token', token);
+        const [userRes, balRes] = await Promise.all([
+          fetch(`${API_URL}/api/users/me`, { headers: { Authorization: `Bearer ${token}` } }),
+          fetch(`${API_URL}/api/payments/balance`, { headers: { Authorization: `Bearer ${token}` } }),
+        ]);
+        if (userRes.ok) setUser(await userRes.json());
+        if (balRes.ok) setCreditBalance((await balRes.json()).balance);
+        setLoading(false);
+      });
+    } catch (e) { setLoading(false); }
+  };
+
+  if (loading) return (
+    <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+      <div className="text-center">
+        <BookOpen className="text-blue-400 mx-auto mb-3 animate-pulse" size={40} />
+        <p className="text-slate-400">Loading...</p>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="min-h-screen bg-slate-950 text-white">
+      <AppNav />
+
+      <div className="max-w-7xl mx-auto px-4 py-6">
+        <div className="flex gap-6">
+
+          {/* LEFT SIDEBAR — desktop only */}
+          <aside className="hidden lg:flex flex-col w-60 shrink-0 gap-3">
+            {/* Profile Card */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-11 h-11 rounded-full bg-blue-600 flex items-center justify-center text-lg font-bold shrink-0">
+                  {user?.name?.[0]?.toUpperCase() || '?'}
+                </div>
+                <div className="min-w-0">
+                  <p className="font-bold text-sm truncate">{user?.name}</p>
+                  <p className="text-slate-400 text-xs truncate">{user?.email}</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-center text-xs">
+                <div className="bg-slate-800 rounded-lg py-2">
+                  <p className="font-bold text-white">{user?.books?.length || 0}</p>
+                  <p className="text-slate-400">Books</p>
+                </div>
+                <div className="bg-slate-800 rounded-lg py-2">
+                  <p className="font-bold text-white">{user?.followers?.length || 0}</p>
+                  <p className="text-slate-400">Followers</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Navigation */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3">
+              {[
+                { icon: <TrendingUp size={17} />, label: 'Feed', tab: 'feed' },
+                { icon: <BookOpen size={17} />, label: 'Discover Books', tab: 'discover' },
+                { icon: <LayoutDashboard size={17} />, label: 'My Books', tab: 'mine' },
+                { icon: <Library size={17} />, label: 'My Library', tab: 'library' },
+                { icon: <DollarSign size={17} />, label: 'Earnings', tab: 'earnings' },
+                { icon: <Link2 size={17} />, label: 'Affiliate Links', tab: 'affiliate' },
+                { icon: <Users size={17} />, label: 'Groups', href: '/groups' },
+              ].map(item => (
+                item.href ? (
+                  <Link key={item.label} href={item.href}
+                    className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-slate-800 transition-colors">
+                    {item.icon} {item.label}
+                  </Link>
+                ) : (
+                  <button key={item.label}
+                    onClick={() => setActiveTab(item.tab!)}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-colors ${
+                      activeTab === item.tab
+                        ? 'bg-blue-600/20 text-blue-400'
+                        : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                    }`}>
+                    {item.icon} {item.label}
+                  </button>
+                )
+              ))}
+            </div>
+
+            {/* Credits */}
+            <div className="bg-emerald-900/20 border border-emerald-700/40 rounded-2xl p-4">
+              <div className="flex items-center gap-2 mb-1">
+                <Wallet size={16} className="text-emerald-400" />
+                <p className="text-xs text-slate-400">Credit Balance</p>
+              </div>
+              <p className="text-2xl font-bold text-emerald-400 mb-3">
+                {creditBalance === null ? '...' : `$${creditBalance.toFixed(2)}`}
+              </p>
+              <Link href="/account/topup"
+                className="block w-full text-center bg-emerald-700 hover:bg-emerald-600 text-white text-sm font-semibold py-2 rounded-xl transition-colors">
+                + Add Credits
+              </Link>
+            </div>
+
+            {/* Create Book Button */}
+            <Link href="/dashboard/new-book"
+              className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white font-semibold py-3 rounded-2xl transition-colors">
+              <Plus size={18} /> Create Book
+            </Link>
+          </aside>
+
+          {/* MAIN CONTENT */}
+          <main className="flex-1 min-w-0">
+            {/* Tab Bar — desktop */}
+            <div className="hidden md:flex border-b border-slate-800 mb-6">
+              {[
+                { key: 'feed', label: '📰 Feed' },
+                { key: 'discover', label: '📖 Discover' },
+                { key: 'mine', label: '📚 Mine' },
+              ].map(tab => (
+                <button key={tab.key} onClick={() => setActiveTab(tab.key)}
+                  className={`px-6 py-3 text-sm font-semibold border-b-2 transition-colors ${
+                    activeTab === tab.key
+                      ? 'border-blue-500 text-blue-400'
+                      : 'border-transparent text-slate-400 hover:text-white'
+                  }`}>
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Tab Content */}
+            {activeTab === 'feed' && <FeedTab user={user} />}
+            {activeTab === 'discover' && <DiscoverTab />}
+            {activeTab === 'mine' && <MineTab creditBalance={creditBalance} />}
+            {activeTab === 'library' && <LibraryTab />}
+            {activeTab === 'earnings' && <EarningsTab />}
+            {activeTab === 'affiliate' && <AffiliateTab />}
+          </main>
+
+          {/* RIGHT PANEL — desktop only */}
+          <aside className="hidden xl:flex flex-col w-72 shrink-0 gap-4">
+            {/* Quick Stats */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+              <h3 className="font-semibold text-sm mb-3 text-slate-300">Quick Stats</h3>
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-400 text-sm">💳 Credits</span>
+                  <span className="text-emerald-400 font-bold">
+                    {creditBalance === null ? '...' : `$${creditBalance.toFixed(2)}`}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-400 text-sm">📚 My Books</span>
+                  <span className="text-white font-bold">{user?.books?.length || 0}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-400 text-sm">👥 Followers</span>
+                  <span className="text-white font-bold">{user?.followers?.length || 0}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Trending Hashtags */}
+            <TrendingPanel />
+
+            {/* Suggested Writers */}
+            <SuggestedWriters />
+          </aside>
+        </div>
+      </div>
+
+      {/* Mobile Bottom Tab Bar */}
+      <BottomTabBar />
+
+      {/* Bottom padding for mobile tab bar */}
+      <div className="h-20 md:hidden" />
+    </div>
+  );
+}
+
+// ─── FEED TAB ────────────────────────────────────────────────────────────────
+function FeedTab({ user }: { user: any }) {
+  const [posts, setPosts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [feedType, setFeedType] = useState<'following' | 'explore'>('following');
+  const [postContent, setPostContent] = useState('');
+  const [posting, setPosting] = useState(false);
+
+  useEffect(() => { fetchPosts(); }, [feedType]);
+
+  const fetchPosts = async () => {
+    setLoading(true);
+    try {
+      const token = await getFreshToken();
+      const endpoint = feedType === 'following' ? '/api/social/feed' : '/api/social/explore';
+      const res = await fetch(`${API_URL}${endpoint}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPosts(data.posts || []);
+      }
     } catch (e) {}
-    localStorage.removeItem('ub_token');
-    router.push('/');
+    setLoading(false);
   };
 
   const handlePost = async () => {
-    if (!content.trim()) return;
+    if (!postContent.trim()) return;
     setPosting(true);
     try {
       const token = await getFreshToken();
-      const hashtags = content.match(/#\w+/g)?.map(h => h.slice(1)) || [];
+      const hashtags = (postContent.match(/#\w+/g) || []).map((h: string) => h.slice(1));
       const res = await fetch(`${API_URL}/api/social/posts`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ content, bookId: selectedBook?.id, hashtags }),
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ content: postContent, hashtags }),
       });
       if (res.ok) {
-        const newPost = await res.json();
-        setPosts(prev => [newPost, ...prev]);
-        setContent('');
-        setSelectedBook(null);
+        setPostContent('');
+        fetchPosts();
       }
     } catch (e) {}
-    finally { setPosting(false); }
+    setPosting(false);
   };
 
   const handleLike = async (postId: string) => {
     const token = await getFreshToken();
-    const res = await fetch(`${API_URL}/api/social/posts/${postId}/like`, {
-      method: 'POST', headers: { 'Authorization': `Bearer ${token}` },
-    });
-    if (res.ok) {
-      const data = await res.json();
-      setPosts(prev => prev.map(p => p.id === postId ? {
-        ...p,
-        likesCount: data.liked ? p.likesCount + 1 : p.likesCount - 1,
-        likes: data.liked ? [...p.likes, { userId: user?.id }] : p.likes.filter((l: any) => l.userId !== user?.id),
-      } : p));
-    }
-  };
-
-  const handleComment = async (postId: string) => {
-    const text = commentText[postId];
-    if (!text?.trim()) return;
-    const token = await getFreshToken();
-    const res = await fetch(`${API_URL}/api/social/posts/${postId}/comment`, {
+    await fetch(`${API_URL}/api/social/posts/${postId}/like`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify({ content: text }),
+      headers: { Authorization: `Bearer ${token}` },
     });
-    if (res.ok) {
-      const comment = await res.json();
-      setPosts(prev => prev.map(p => p.id === postId ? {
-        ...p, commentsCount: p.commentsCount + 1, comments: [...(p.comments || []), comment],
-      } : p));
-      setCommentText(prev => ({ ...prev, [postId]: '' }));
-    }
+    fetchPosts();
   };
-
-  const handleRepost = async (postId: string) => {
-    const token = await getFreshToken();
-    await fetch(`${API_URL}/api/social/posts/${postId}/repost`, {
-      method: 'POST', headers: { 'Authorization': `Bearer ${token}` },
-    });
-    setPosts(prev => prev.map(p => p.id === postId ? { ...p, repostsCount: p.repostsCount + 1 } : p));
-  };
-
-  const handleDelete = async (postId: string) => {
-    if (!confirm('Delete this post?')) return;
-    const token = await getFreshToken();
-    await fetch(`${API_URL}/api/social/posts/${postId}`, {
-      method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` },
-    });
-    setPosts(prev => prev.filter(p => p.id !== postId));
-  };
-
-  const toggleComments = (postId: string) => {
-    setExpandedComments(prev => prev.includes(postId) ? prev.filter(id => id !== postId) : [...prev, postId]);
-  };
-
-  const unreadNotifs = notifications.filter(n => !n.isRead).length;
 
   return (
-    <div className="min-h-screen bg-slate-900 text-white pb-16 md:pb-0">
-      {/* Top Nav */}
-      <nav className="sticky top-0 z-50 bg-slate-900/95 backdrop-blur border-b border-slate-800">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-          <Link href="/feed" className="flex items-center gap-2 text-xl font-bold">
-            <BookOpen className="text-blue-400" size={26} />
-            <span className="hidden sm:block">Universal Book</span>
-          </Link>
-
-          {/* Desktop Nav */}
-          <div className="hidden md:flex items-center gap-1">
-            {[
-              { href: '/feed', label: '🏠 Feed' },
-              { href: '/books', label: '📚 Books' },
-              { href: '/writers', label: '✍️ Writers' },
-              { href: '/groups', label: '👥 Groups' },
-            ].map(item => (
-              <Link key={item.href} href={item.href}
-                className="px-3 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 text-sm transition">
-                {item.label}
-              </Link>
-            ))}
+    <div className="space-y-4">
+      {/* Post Composer */}
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+        <div className="flex gap-3">
+          <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center font-bold shrink-0">
+            {user?.name?.[0]?.toUpperCase() || '?'}
           </div>
-
-          <div className="flex items-center gap-2">
-            <Link href="/notifications" className="relative p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition">
-              <Bell size={20} />
-              {unreadNotifs > 0 && (
-                <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full text-xs flex items-center justify-center">{unreadNotifs}</span>
-              )}
-            </Link>
-            <Link href={`/profile/${user?.id}`} className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center font-bold text-sm hidden md:flex">
-              {user?.name?.[0] || '?'}
-            </Link>
-            <button onClick={handleLogout}
-              className="hidden md:flex items-center gap-1 px-3 py-2 text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded-lg text-sm transition">
-              <LogOut size={16} /> Logout
-            </button>
-            {/* Mobile menu button */}
-            <button onClick={() => setShowMobileMenu(!showMobileMenu)}
-              className="md:hidden p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition">
-              <Menu size={20} />
-            </button>
-          </div>
-        </div>
-
-        {/* Mobile Menu Dropdown */}
-        {showMobileMenu && (
-          <div className="md:hidden bg-slate-800 border-t border-slate-700 px-4 py-3 space-y-2">
-            {[
-              { href: '/dashboard', label: '✍️ My Books' },
-              { href: '/dashboard/new-book', label: '➕ New Book' },
-              { href: '/library', label: '📖 My Library' },
-              { href: '/dashboard/earnings', label: '💰 Earnings' },
-              { href: '/groups', label: '👥 Groups' },
-              { href: '/notifications', label: '🔔 Notifications' },
-              { href: `/profile/${user?.id}`, label: '👤 My Profile' },
-              { href: '/account', label: '⚙️ Account' },
-            ].map(item => (
-              <Link key={item.href} href={item.href} onClick={() => setShowMobileMenu(false)}
-                className="block px-3 py-2 rounded-lg text-slate-300 hover:text-white hover:bg-slate-700 text-sm transition">
-                {item.label}
-              </Link>
-            ))}
-            <button onClick={handleLogout}
-              className="w-full text-left px-3 py-2 rounded-lg text-red-400 hover:bg-slate-700 text-sm transition">
-              🚪 Logout
-            </button>
-          </div>
-        )}
-      </nav>
-
-      <div className="max-w-6xl mx-auto px-4 py-6">
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-
-          {/* Left Sidebar - Desktop only */}
-          <div className="hidden lg:block lg:col-span-1">
-            <div className="sticky top-20 space-y-4">
-              <div className="bg-slate-800 border border-slate-700 rounded-xl p-4">
-                <Link href={`/profile/${user?.id}`} className="flex items-center gap-3 mb-3">
-                  <div className="w-12 h-12 rounded-full bg-blue-600 flex items-center justify-center text-xl font-bold">
-                    {user?.name?.[0] || '?'}
-                  </div>
-                  <div>
-                    <div className="font-bold">{user?.name}</div>
-                    <div className="text-slate-400 text-xs truncate">{user?.email}</div>
-                  </div>
-                </Link>
-                <div className="grid grid-cols-2 gap-2 text-center text-xs">
-                  <div className="bg-slate-700 rounded-lg p-2">
-                    <div className="font-bold text-blue-400">{user?.books?.length || 0}</div>
-                    <div className="text-slate-400">Books</div>
-                  </div>
-                  <div className="bg-slate-700 rounded-lg p-2">
-                    <div className="font-bold text-blue-400">{user?.followers?.length || 0}</div>
-                    <div className="text-slate-400">Followers</div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-slate-800 border border-slate-700 rounded-xl p-3 space-y-1">
-                {[
-                  { href: '/feed', label: '🏠 Feed' },
-                  { href: '/dashboard', label: '✍️ My Books' },
-                  { href: '/dashboard/new-book', label: '➕ Write New Book' },
-                  { href: '/dashboard/earnings', label: '💰 Earnings' },
-                  { href: '/library', label: '📖 My Library' },
-                  { href: '/books', label: '📚 Browse Books' },
-                  { href: '/groups', label: '👥 Communities' },
-                  { href: '/notifications', label: '🔔 Notifications' },
-                ].map(link => (
-                  <Link key={link.href} href={link.href}
-                    className="block px-3 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700 text-sm transition">
-                    {link.label}
-                  </Link>
-                ))}
-                <button onClick={handleLogout}
-                  className="w-full text-left px-3 py-2 rounded-lg text-red-400 hover:bg-slate-700 text-sm transition">
-                  🚪 Logout
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Center Feed */}
-          <div className="lg:col-span-2 space-y-4">
-            <div className="flex gap-1 bg-slate-800 border border-slate-700 rounded-xl p-1">
-              <button onClick={() => { setActiveTab('feed'); fetchAll(); }}
-                className={`flex-1 py-2 rounded-lg text-sm font-semibold transition ${activeTab === 'feed' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`}>
-                Following
+          <div className="flex-1">
+            <textarea
+              value={postContent}
+              onChange={e => setPostContent(e.target.value)}
+              placeholder="What's on your mind? Use #hashtags"
+              rows={3}
+              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 resize-none focus:outline-none focus:border-blue-500 transition-colors"
+            />
+            <div className="flex justify-between items-center mt-2">
+              <span className="text-xs text-slate-500">{postContent.length}/500</span>
+              <button
+                onClick={handlePost}
+                disabled={!postContent.trim() || posting}
+                className="px-5 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-semibold rounded-xl transition-colors"
+              >
+                {posting ? 'Posting...' : 'Post'}
               </button>
-              <button onClick={() => { setActiveTab('explore'); fetchExplore(); }}
-                className={`flex-1 py-2 rounded-lg text-sm font-semibold transition ${activeTab === 'explore' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`}>
-                Explore
-              </button>
-            </div>
-
-            {/* Create Post */}
-            <div className="bg-slate-800 border border-slate-700 rounded-xl p-4">
-              <div className="flex gap-3">
-                <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center font-bold flex-shrink-0">
-                  {user?.name?.[0] || '?'}
-                </div>
-                <div className="flex-1">
-                  <textarea value={content} onChange={e => setContent(e.target.value)}
-                    placeholder="Share your thoughts, writing tips, or book excerpts... Use #hashtags"
-                    rows={3}
-                    className="w-full bg-slate-700 border border-slate-600 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-blue-500 resize-none" />
-                  {selectedBook && (
-                    <div className="mt-2 p-3 bg-slate-700 rounded-lg flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <BookOpen size={16} className="text-blue-400" />
-                        <span className="text-sm">{selectedBook.title}</span>
-                      </div>
-                      <button onClick={() => setSelectedBook(null)} className="text-slate-400 hover:text-white">
-                        <X size={16} />
-                      </button>
-                    </div>
-                  )}
-                  <div className="flex items-center justify-between mt-3">
-                    <button onClick={() => setShowBookPicker(!showBookPicker)}
-                      className="flex items-center gap-1 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg text-xs text-slate-300 transition">
-                      <BookOpen size={14} /> Attach Book
-                    </button>
-                    <button onClick={handlePost} disabled={posting || !content.trim()}
-                      className="flex items-center gap-2 px-5 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded-xl text-sm font-semibold transition">
-                      {posting ? 'Posting...' : <><Send size={14} /> Post</>}
-                    </button>
-                  </div>
-                  {showBookPicker && (
-                    <div className="mt-2 bg-slate-700 rounded-xl overflow-hidden">
-                      {myBooks.length === 0 ? (
-                        <div className="p-3 text-slate-400 text-sm">No books yet. <Link href="/dashboard/new-book" className="text-blue-400">Create one →</Link></div>
-                      ) : myBooks.map((book: any) => (
-                        <button key={book.id} onClick={() => { setSelectedBook(book); setShowBookPicker(false); }}
-                          className="w-full text-left px-4 py-2 hover:bg-slate-600 text-sm transition flex items-center gap-2">
-                          <BookOpen size={14} className="text-blue-400" /> {book.title}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Posts */}
-            {loading ? (
-              <div className="space-y-4">
-                {[1,2,3].map(i => <div key={i} className="bg-slate-800 rounded-xl h-40 animate-pulse" />)}
-              </div>
-            ) : posts.length === 0 ? (
-              <div className="text-center py-16 bg-slate-800 border border-slate-700 rounded-xl">
-                <div className="text-4xl mb-3">📝</div>
-                <h3 className="font-bold text-lg mb-2">No posts yet</h3>
-                <p className="text-slate-400 text-sm mb-4">
-                  {activeTab === 'feed' ? 'Follow writers to see their posts here' : 'Be the first to post something!'}
-                </p>
-                {activeTab === 'feed' && <Link href="/writers" className="text-blue-400 hover:text-blue-300 text-sm">Discover writers →</Link>}
-              </div>
-            ) : (
-              posts.map((post: any) => (
-                <div key={post.id} className="bg-slate-800 border border-slate-700 rounded-xl p-5">
-                  <div className="flex items-start justify-between mb-3">
-                    <Link href={`/profile/${post.user?.id}`} className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center font-bold flex-shrink-0">
-                        {post.user?.name?.[0] || '?'}
-                      </div>
-                      <div>
-                        <div className="font-semibold text-sm flex items-center gap-1">
-                          {post.user?.name}
-                          {post.user?.isVerified && <span className="text-blue-400 text-xs">✓</span>}
-                        </div>
-                        <div className="text-slate-500 text-xs">{new Date(post.createdAt).toLocaleDateString()}</div>
-                      </div>
-                    </Link>
-                    {post.userId === user?.id && (
-                      <button onClick={() => handleDelete(post.id)} className="text-slate-600 hover:text-red-400 transition">
-                        <Trash2 size={16} />
-                      </button>
-                    )}
-                  </div>
-                  <p className="text-slate-200 text-sm leading-relaxed mb-3 whitespace-pre-wrap">
-                    {post.content.split(/(#\w+)/g).map((part: string, i: number) =>
-                      part.startsWith('#') ? <span key={i} className="text-blue-400">{part}</span> : part
-                    )}
-                  </p>
-                  {post.book && (
-                    <Link href={`/books/${post.book.id}`}
-                      className="block mb-3 p-3 bg-slate-700 border border-slate-600 hover:border-blue-500 rounded-xl transition">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-blue-900/50 rounded-lg flex items-center justify-center flex-shrink-0">
-                          <BookOpen className="text-blue-400" size={18} />
-                        </div>
-                        <div>
-                          <div className="font-semibold text-sm">{post.book.title}</div>
-                          <div className="text-slate-400 text-xs">{post.book.genre}</div>
-                          {post.book.published?.isPublic && (
-                            <div className="text-blue-400 text-xs">{post.book.published.price === 0 ? 'Free' : `$${post.book.published.price}`}</div>
-                          )}
-                        </div>
-                        <div className="ml-auto text-blue-400 text-xs">Read Preview →</div>
-                      </div>
-                    </Link>
-                  )}
-                  <div className="flex items-center gap-4 text-slate-400 text-sm">
-                    <button onClick={() => handleLike(post.id)}
-                      className={`flex items-center gap-1.5 transition ${post.likes?.some((l: any) => l.userId === user?.id) ? 'text-red-400' : 'hover:text-red-400'}`}>
-                      <Heart size={16} fill={post.likes?.some((l: any) => l.userId === user?.id) ? 'currentColor' : 'none'} />
-                      {post.likesCount || 0}
-                    </button>
-                    <button onClick={() => toggleComments(post.id)} className="flex items-center gap-1.5 hover:text-blue-400 transition">
-                      <MessageCircle size={16} /> {post.commentsCount || 0}
-                    </button>
-                    <button onClick={() => handleRepost(post.id)} className="flex items-center gap-1.5 hover:text-green-400 transition">
-                      <Repeat2 size={16} /> {post.repostsCount || 0}
-                    </button>
-                  </div>
-                  {expandedComments.includes(post.id) && (
-                    <div className="mt-4 pt-4 border-t border-slate-700 space-y-3">
-                      {post.comments?.map((comment: any) => (
-                        <div key={comment.id} className="flex gap-2">
-                          <div className="w-7 h-7 rounded-full bg-slate-600 flex items-center justify-center text-xs font-bold flex-shrink-0">
-                            {comment.user?.name?.[0] || '?'}
-                          </div>
-                          <div className="flex-1 bg-slate-700 rounded-xl px-3 py-2">
-                            <div className="text-xs font-semibold text-blue-400 mb-1">{comment.user?.name}</div>
-                            <div className="text-sm text-slate-300">{comment.content}</div>
-                          </div>
-                        </div>
-                      ))}
-                      <div className="flex gap-2">
-                        <div className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center text-xs font-bold flex-shrink-0">
-                          {user?.name?.[0] || '?'}
-                        </div>
-                        <div className="flex-1 flex gap-2">
-                          <input value={commentText[post.id] || ''} onChange={e => setCommentText(prev => ({ ...prev, [post.id]: e.target.value }))}
-                            placeholder="Write a comment..."
-                            onKeyDown={e => { if (e.key === 'Enter') handleComment(post.id); }}
-                            className="flex-1 bg-slate-700 border border-slate-600 rounded-xl px-3 py-1.5 text-white text-xs focus:outline-none focus:border-blue-500" />
-                          <button onClick={() => handleComment(post.id)}
-                            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded-xl text-xs transition">
-                            <Send size={12} />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))
-            )}
-          </div>
-
-          {/* Right Sidebar */}
-          <div className="hidden lg:block lg:col-span-1">
-            <div className="sticky top-20 space-y-4">
-              {trending.length > 0 && (
-                <div className="bg-slate-800 border border-slate-700 rounded-xl p-4">
-                  <h2 className="font-bold mb-3 flex items-center gap-2">
-                    <TrendingUp className="text-orange-400" size={16} /> Trending
-                  </h2>
-                  <div className="space-y-2">
-                    {trending.slice(0, 6).map((item: any, i) => (
-                      <div key={i} className="flex items-center justify-between">
-                        <span className="text-blue-400 text-sm">#{item.tag}</span>
-                        <span className="text-slate-500 text-xs">{item.count} posts</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {suggested.length > 0 && (
-                <div className="bg-slate-800 border border-slate-700 rounded-xl p-4">
-                  <h2 className="font-bold mb-3 flex items-center gap-2">
-                    <Users className="text-blue-400" size={16} /> Writers to Follow
-                  </h2>
-                  <div className="space-y-3">
-                    {suggested.map((writer: any) => (
-                      <div key={writer.id} className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-xs font-bold flex-shrink-0">
-                          {writer.name?.[0] || '?'}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <Link href={`/profile/${writer.id}`} className="text-sm font-medium hover:text-blue-400 truncate block">{writer.name}</Link>
-                          <div className="text-xs text-slate-500">{writer.books?.length || 0} books</div>
-                        </div>
-                        <Link href={`/profile/${writer.id}`}
-                          className="text-xs text-blue-400 border border-blue-800 hover:border-blue-600 px-2 py-1 rounded-lg transition">
-                          View
-                        </Link>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              <div className="bg-slate-800 border border-slate-700 rounded-xl p-4">
-                <h2 className="font-bold mb-3 flex items-center gap-2">
-                  <BookOpen className="text-green-400" size={16} /> Quick Actions
-                </h2>
-                <div className="space-y-2">
-                  <Link href="/dashboard/new-book"
-                    className="block w-full text-center py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-semibold transition">
-                    ✍️ Write New Book
-                  </Link>
-                  <Link href="/books"
-                    className="block w-full text-center py-2 border border-slate-600 hover:border-blue-500 rounded-lg text-sm transition">
-                    📚 Browse Books
-                  </Link>
-                </div>
-              </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Mobile Bottom Navigation */}
-      <div className="fixed bottom-0 left-0 right-0 bg-slate-900 border-t border-slate-700 md:hidden z-40">
-        <div className="flex items-center justify-around py-2">
-          <Link href="/feed" className="flex flex-col items-center gap-0.5 px-3 py-1 text-blue-400">
-            <Home size={22} />
-            <span className="text-xs">Feed</span>
-          </Link>
-          <Link href="/books" className="flex flex-col items-center gap-0.5 px-3 py-1 text-slate-400 hover:text-white">
-            <BookOpen size={22} />
-            <span className="text-xs">Books</span>
-          </Link>
-          <Link href="/dashboard/new-book" className="flex flex-col items-center gap-0.5 px-3 py-1 text-slate-400 hover:text-white">
-            <PenSquare size={22} />
-            <span className="text-xs">Write</span>
-          </Link>
-          <Link href="/library" className="flex flex-col items-center gap-0.5 px-3 py-1 text-slate-400 hover:text-white">
-            <Library size={22} />
-            <span className="text-xs">Library</span>
-          </Link>
-          <Link href="/notifications" className="flex flex-col items-center gap-0.5 px-3 py-1 text-slate-400 hover:text-white relative">
-            <Bell size={22} />
-            {unreadNotifs > 0 && <span className="absolute top-0 right-2 w-4 h-4 bg-red-500 rounded-full text-xs flex items-center justify-center">{unreadNotifs}</span>}
-            <span className="text-xs">Alerts</span>
-          </Link>
-          <button onClick={() => setShowMobileMenu(!showMobileMenu)} className="flex flex-col items-center gap-0.5 px-3 py-1 text-slate-400 hover:text-white">
-            <Menu size={22} />
-            <span className="text-xs">More</span>
+      {/* Feed Type Toggle */}
+      <div className="flex bg-slate-900 border border-slate-800 rounded-xl p-1">
+        {(['following', 'explore'] as const).map(type => (
+          <button key={type} onClick={() => setFeedType(type)}
+            className={`flex-1 py-2 rounded-lg text-sm font-semibold capitalize transition-colors ${
+              feedType === type ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
+            }`}>
+            {type === 'following' ? '👥 Following' : '🌍 Explore'}
           </button>
+        ))}
+      </div>
+
+      {/* Posts */}
+      {loading ? (
+        <div className="space-y-4">
+          {[1,2,3].map(i => <div key={i} className="bg-slate-900 rounded-2xl h-40 animate-pulse border border-slate-800" />)}
         </div>
+      ) : posts.length === 0 ? (
+        <div className="text-center py-16 bg-slate-900 rounded-2xl border border-slate-800">
+          <p className="text-slate-400 text-lg mb-2">No posts yet</p>
+          <p className="text-slate-500 text-sm">
+            {feedType === 'following' ? 'Follow some writers to see their posts here' : 'Be the first to post something!'}
+          </p>
+        </div>
+      ) : (
+        posts.map((post: any) => (
+          <div key={post.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-5 hover:border-slate-700 transition-colors">
+            <div className="flex items-start gap-3 mb-3">
+              <Link href={`/profile/${post.user?.id}`}>
+                <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center font-bold shrink-0 hover:opacity-80 transition-opacity">
+                  {post.user?.name?.[0]?.toUpperCase() || '?'}
+                </div>
+              </Link>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <Link href={`/profile/${post.user?.id}`} className="font-semibold text-sm hover:text-blue-400 transition-colors">
+                    {post.user?.name}
+                  </Link>
+                  {post.user?.isVerified && <span className="text-blue-400 text-xs">✓</span>}
+                </div>
+                <p className="text-xs text-slate-500">
+                  {new Date(post.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                </p>
+              </div>
+            </div>
+
+            <p className="text-slate-200 text-sm leading-relaxed mb-3 whitespace-pre-wrap">{post.content}</p>
+
+            {post.book && (
+              <Link href={`/books/${post.book.id}`}
+                className="flex items-center gap-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl p-3 mb-3 transition-colors">
+                <BookOpen size={18} className="text-blue-400 shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold truncate">{post.book.title}</p>
+                  <p className="text-xs text-slate-400">{post.book.genre}</p>
+                </div>
+              </Link>
+            )}
+
+            {post.hashtags?.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-3">
+                {post.hashtags.map((tag: string) => (
+                  <span key={tag} className="text-blue-400 text-xs hover:underline cursor-pointer">#{tag}</span>
+                ))}
+              </div>
+            )}
+
+            <div className="flex items-center gap-6 pt-2 border-t border-slate-800">
+              <button onClick={() => handleLike(post.id)}
+                className="flex items-center gap-2 text-slate-500 hover:text-red-400 transition-colors text-sm">
+                <Heart size={16} /> {post._count?.likes || post.likesCount || 0}
+              </button>
+              <button className="flex items-center gap-2 text-slate-500 hover:text-blue-400 transition-colors text-sm">
+                <MessageCircle size={16} /> {post._count?.comments || post.commentsCount || 0}
+              </button>
+              <button className="flex items-center gap-2 text-slate-500 hover:text-green-400 transition-colors text-sm">
+                <Repeat2 size={16} /> {post._count?.reposts || post.repostsCount || 0}
+              </button>
+            </div>
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
+// ─── DISCOVER TAB ─────────────────────────────────────────────────────────────
+function DiscoverTab() {
+  const [books, setBooks] = useState<any[]>([]);
+  const [featured, setFeatured] = useState<any[]>([]);
+  const [search, setSearch] = useState('');
+  const [genre, setGenre] = useState('All');
+  const [loading, setLoading] = useState(true);
+
+  const GENRES = ['All','Fantasy','Sci-Fi','Romance','Thriller','Self-Help','Business','Mystery','Horror','Biography'];
+
+  useEffect(() => { fetchBooks(); }, [genre]);
+
+  const fetchBooks = async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (genre !== 'All') params.set('genre', genre);
+      if (search) params.set('search', search);
+      const [booksRes, featuredRes] = await Promise.all([
+        fetch(`${API_URL}/api/marketplace/books?${params}`),
+        fetch(`${API_URL}/api/marketplace/new-releases`),
+      ]);
+      if (booksRes.ok) setBooks((await booksRes.json()).books || []);
+      if (featuredRes.ok) setFeatured(await featuredRes.json());
+    } catch (e) {}
+    setLoading(false);
+  };
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    fetchBooks();
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Search */}
+      <form onSubmit={handleSearch} className="flex gap-2">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-2.5 text-slate-500" size={16} />
+          <input value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Search books, authors..."
+            className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-9 pr-4 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors" />
+        </div>
+        <button type="submit" className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-xl text-sm font-semibold transition-colors">Search</button>
+      </form>
+
+      {/* Genre Pills */}
+      <div className="flex gap-2 flex-wrap">
+        {GENRES.map(g => (
+          <button key={g} onClick={() => setGenre(g)}
+            className={`px-4 py-1.5 rounded-full text-sm transition-colors ${
+              genre === g ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white border border-slate-700'
+            }`}>
+            {g}
+          </button>
+        ))}
+      </div>
+
+      {/* New Releases */}
+      {featured.length > 0 && (
+        <div>
+          <h3 className="font-semibold mb-3 text-slate-300">🆕 New Releases</h3>
+          <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+            {featured.slice(0, 6).map((pb: any) => (
+              <Link key={pb.id} href={`/books/${pb.bookId}`}
+                className="bg-slate-900 border border-slate-800 hover:border-blue-500 rounded-xl p-4 min-w-[160px] transition-colors shrink-0">
+                <div className="w-8 h-8 bg-blue-900/50 rounded-lg flex items-center justify-center mb-2">
+                  <BookOpen className="text-blue-400" size={14} />
+                </div>
+                <p className="font-semibold text-xs line-clamp-2 mb-1">{pb.book?.title}</p>
+                <p className="text-slate-500 text-xs">{pb.book?.genre}</p>
+                <p className="text-blue-400 font-bold text-sm mt-2">{pb.price === 0 ? 'Free' : `$${pb.price}`}</p>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* All Books */}
+      <div>
+        <h3 className="font-semibold mb-3 text-slate-300">📚 All Books</h3>
+        {loading ? (
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            {[1,2,3,4,5,6].map(i => <div key={i} className="bg-slate-900 rounded-xl h-40 animate-pulse border border-slate-800" />)}
+          </div>
+        ) : books.length === 0 ? (
+          <div className="text-center py-12 text-slate-500">No books found</div>
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            {books.map((pb: any) => (
+              <Link key={pb.id} href={`/books/${pb.bookId}`}
+                className="bg-slate-900 border border-slate-800 hover:border-blue-500 rounded-xl p-4 transition-colors">
+                <div className="w-8 h-8 bg-blue-900/50 rounded-lg flex items-center justify-center mb-3">
+                  <BookOpen className="text-blue-400" size={14} />
+                </div>
+                <h4 className="font-semibold text-sm line-clamp-2 mb-1">{pb.book?.title}</h4>
+                <p className="text-slate-400 text-xs mb-1">by {pb.book?.user?.name}</p>
+                <p className="text-slate-500 text-xs mb-2">{pb.book?.genre}</p>
+                <p className="text-blue-400 font-bold text-sm">{pb.price === 0 ? 'Free' : `$${pb.price}`}</p>
+              </Link>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── MINE TAB ─────────────────────────────────────────────────────────────────
+function MineTab({ creditBalance }: { creditBalance: number | null }) {
+  const [myBooks, setMyBooks] = useState<any[]>([]);
+  const [library, setLibrary] = useState<any[]>([]);
+  const [earnings, setEarnings] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => { fetchData(); }, []);
+
+  const fetchData = async () => {
+    const token = await getFreshToken();
+    if (!token) return;
+    try {
+      const [booksRes, libRes, balRes] = await Promise.all([
+        fetch(`${API_URL}/api/books`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${API_URL}/api/marketplace/library`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${API_URL}/api/payments/transactions`, { headers: { Authorization: `Bearer ${token}` } }),
+      ]);
+      if (booksRes.ok) setMyBooks(await booksRes.json());
+      if (libRes.ok) setLibrary(await libRes.json());
+      if (balRes.ok) {
+        const txs = await balRes.json();
+        const authorEarnings = txs.filter((t: any) => t.type === 'BOOK_SALE_EARNING').reduce((s: number, t: any) => s + t.amount, 0);
+        const affiliateEarnings = txs.filter((t: any) => t.type === 'AFFILIATE_EARNING').reduce((s: number, t: any) => s + t.amount, 0);
+        setEarnings({ author: authorEarnings, affiliate: affiliateEarnings });
+      }
+    } catch (e) {}
+    setLoading(false);
+  };
+
+  if (loading) return <div className="space-y-4">{[1,2,3].map(i => <div key={i} className="bg-slate-900 rounded-2xl h-32 animate-pulse border border-slate-800" />)}</div>;
+
+  return (
+    <div className="space-y-6">
+      {/* Credits Banner */}
+      <div className="bg-emerald-900/20 border border-emerald-700/40 rounded-2xl p-4 flex items-center justify-between">
+        <div>
+          <p className="text-xs text-slate-400 mb-1">Credit Balance</p>
+          <p className="text-3xl font-bold text-emerald-400">{creditBalance === null ? '...' : `$${creditBalance.toFixed(2)}`}</p>
+        </div>
+        <Link href="/account/topup"
+          className="bg-emerald-700 hover:bg-emerald-600 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors">
+          + Add Credits
+        </Link>
+      </div>
+
+      {/* My Books */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-semibold text-slate-300">📚 My Books ({myBooks.length})</h3>
+          <Link href="/dashboard/new-book"
+            className="flex items-center gap-1 text-blue-400 text-sm hover:underline">
+            <Plus size={14} /> Create New
+          </Link>
+        </div>
+        {myBooks.length === 0 ? (
+          <div className="text-center py-8 bg-slate-900 border border-slate-800 rounded-2xl">
+            <BookOpen className="mx-auto text-slate-600 mb-2" size={32} />
+            <p className="text-slate-400 text-sm mb-3">No books yet</p>
+            <Link href="/dashboard/new-book"
+              className="inline-block bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors">
+              Create Your First Book
+            </Link>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {myBooks.map((book: any) => (
+              <div key={book.id} className="bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-xl p-4 flex items-center gap-4 transition-colors">
+                <div className="w-10 h-10 bg-blue-900/50 rounded-xl flex items-center justify-center shrink-0">
+                  <BookOpen className="text-blue-400" size={16} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-sm truncate">{book.title}</p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${
+                      book.status === 'COMPLETE' ? 'bg-green-900/50 text-green-400' :
+                      book.status === 'GENERATING' ? 'bg-yellow-900/50 text-yellow-400' :
+                      'bg-slate-700 text-slate-400'
+                    }`}>{book.status}</span>
+                    <span className="text-slate-500 text-xs">{book.chapters?.length || 0} chapters</span>
+                  </div>
+                </div>
+                <div className="flex gap-2 shrink-0">
+                  <Link href={`/dashboard/books/${book.id}`}
+                    className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg text-xs font-medium transition-colors">
+                    Manage
+                  </Link>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* My Library */}
+      <div>
+        <h3 className="font-semibold text-slate-300 mb-3">🗂 My Library ({library.length})</h3>
+        {library.length === 0 ? (
+          <div className="text-center py-8 bg-slate-900 border border-slate-800 rounded-2xl">
+            <p className="text-slate-400 text-sm mb-3">No purchased books yet</p>
+            <Link href="/books" className="text-blue-400 text-sm hover:underline">Browse Books</Link>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3">
+            {library.map((purchase: any) => (
+              <Link key={purchase.id}
+                href={`/books/${purchase.publishedBook?.bookId || purchase.bookId}`}
+                className="bg-slate-900 border border-slate-800 hover:border-blue-500 rounded-xl p-4 transition-colors">
+                <div className="w-8 h-8 bg-purple-900/50 rounded-lg flex items-center justify-center mb-2">
+                  <BookOpen className="text-purple-400" size={14} />
+                </div>
+                <p className="font-semibold text-xs line-clamp-2">{purchase.publishedBook?.book?.title}</p>
+                <p className="text-slate-500 text-xs mt-1">by {purchase.publishedBook?.book?.user?.name}</p>
+              </Link>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Earnings Summary */}
+      {earnings && (
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-semibold text-slate-300">💰 Earnings</h3>
+            <Link href="/dashboard/earnings" className="text-blue-400 text-sm hover:underline">View Details →</Link>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
+              <p className="text-xs text-slate-400 mb-1">📚 Book Sales</p>
+              <p className="text-xl font-bold text-blue-400">${earnings.author.toFixed(2)}</p>
+            </div>
+            <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
+              <p className="text-xs text-slate-400 mb-1">🔗 Affiliate</p>
+              <p className="text-xl font-bold text-purple-400">${earnings.affiliate.toFixed(2)}</p>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── LIBRARY TAB ──────────────────────────────────────────────────────────────
+function LibraryTab() {
+  const [library, setLibrary] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetch_ = async () => {
+      const token = await getFreshToken();
+      if (!token) return;
+      const res = await fetch(`${API_URL}/api/marketplace/library`, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) setLibrary(await res.json());
+      setLoading(false);
+    };
+    fetch_();
+  }, []);
+
+  if (loading) return <div className="grid grid-cols-2 gap-4">{[1,2,3,4].map(i => <div key={i} className="bg-slate-900 rounded-xl h-40 animate-pulse border border-slate-800" />)}</div>;
+
+  return (
+    <div>
+      <h3 className="font-semibold text-slate-300 mb-4">🗂 My Library ({library.length})</h3>
+      {library.length === 0 ? (
+        <div className="text-center py-16 bg-slate-900 border border-slate-800 rounded-2xl">
+          <BookOpen className="mx-auto text-slate-600 mb-3" size={40} />
+          <p className="text-slate-400 mb-2">No purchased books yet</p>
+          <Link href="/books" className="text-blue-400 hover:underline text-sm">Browse the marketplace</Link>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          {library.map((purchase: any) => (
+            <Link key={purchase.id}
+              href={`/books/${purchase.publishedBook?.bookId || purchase.bookId}`}
+              className="bg-slate-900 border border-slate-800 hover:border-blue-500 rounded-xl p-4 transition-colors">
+              <div className="w-10 h-10 bg-purple-900/50 rounded-xl flex items-center justify-center mb-3">
+                <BookOpen className="text-purple-400" size={16} />
+              </div>
+              <p className="font-semibold text-sm line-clamp-2 mb-1">{purchase.publishedBook?.book?.title}</p>
+              <p className="text-slate-400 text-xs">by {purchase.publishedBook?.book?.user?.name}</p>
+              <p className="text-emerald-400 text-xs mt-2">✓ Owned</p>
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── EARNINGS TAB ─────────────────────────────────────────────────────────────
+function EarningsTab() {
+  return (
+    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 text-center">
+      <DollarSign className="mx-auto text-slate-600 mb-3" size={40} />
+      <p className="text-slate-300 font-semibold mb-2">Full Earnings Dashboard</p>
+      <p className="text-slate-500 text-sm mb-4">View your complete earnings history, affiliate stats, and transaction log</p>
+      <Link href="/dashboard/earnings"
+        className="inline-block bg-blue-600 hover:bg-blue-500 text-white px-6 py-2.5 rounded-xl font-semibold text-sm transition-colors">
+        Open Earnings Dashboard →
+      </Link>
+    </div>
+  );
+}
+
+// ─── AFFILIATE TAB ────────────────────────────────────────────────────────────
+function AffiliateTab() {
+  const [stats, setStats] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetch_ = async () => {
+      const token = await getFreshToken();
+      if (!token) return;
+      const res = await fetch(`${API_URL}/api/payments/affiliate/stats`, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) setStats(await res.json());
+      setLoading(false);
+    };
+    fetch_();
+  }, []);
+
+  if (loading) return <div className="bg-slate-900 rounded-2xl h-40 animate-pulse border border-slate-800" />;
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+        <h3 className="font-semibold mb-1">🔗 Affiliate Earnings</h3>
+        <p className="text-3xl font-bold text-purple-400">${stats?.totalEarnings?.toFixed(2) || '0.00'}</p>
+        <p className="text-slate-400 text-sm mt-1">from {stats?.links?.length || 0} affiliate links</p>
+      </div>
+      {stats?.links?.length > 0 && (
+        <div className="space-y-3">
+          {stats.links.map((link: any) => {
+            const earned = link.earnings.reduce((s: number, e: any) => s + e.amount, 0);
+            const shareUrl = `${window.location.origin}/books/${link.bookId}?ref=${link.code}`;
+            return (
+              <div key={link.id} className="bg-slate-900 border border-slate-800 rounded-xl p-4">
+                <div className="flex justify-between items-start mb-2">
+                  <p className="font-semibold text-sm">{link.book?.title}</p>
+                  <p className="text-purple-400 font-bold">${earned.toFixed(2)}</p>
+                </div>
+                <p className="text-slate-500 text-xs mb-2">{link.clicks} clicks · {link.earnings.length} sales</p>
+                <div className="flex gap-2">
+                  <input readOnly value={shareUrl}
+                    className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-400 truncate" />
+                  <button onClick={() => navigator.clipboard.writeText(shareUrl)}
+                    className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg text-xs shrink-0 transition-colors">
+                    Copy
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {(!stats?.links || stats.links.length === 0) && (
+        <div className="text-center py-12 bg-slate-900 border border-slate-800 rounded-2xl">
+          <Link2 className="mx-auto text-slate-600 mb-3" size={40} />
+          <p className="text-slate-400 text-sm mb-2">No affiliate links yet</p>
+          <p className="text-slate-500 text-xs">Share any book from the marketplace to earn 10% commission on sales</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── TRENDING PANEL ───────────────────────────────────────────────────────────
+function TrendingPanel() {
+  const [trending, setTrending] = useState<any[]>([]);
+
+  useEffect(() => {
+    fetch(`${API_URL}/api/social/trending`)
+      .then(r => r.json()).then(setTrending).catch(() => {});
+  }, []);
+
+  if (!trending.length) return null;
+
+  return (
+    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+      <h3 className="font-semibold text-sm mb-3 text-slate-300">🔥 Trending</h3>
+      <div className="space-y-2">
+        {trending.slice(0, 6).map((t: any) => (
+          <div key={t.tag} className="flex items-center justify-between">
+            <span className="text-blue-400 text-sm">#{t.tag}</span>
+            <span className="text-slate-500 text-xs">{t.count} posts</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── SUGGESTED WRITERS ────────────────────────────────────────────────────────
+function SuggestedWriters() {
+  const [writers, setWriters] = useState<any[]>([]);
+
+  useEffect(() => {
+    const fetch_ = async () => {
+      const token = await getFreshToken();
+      if (!token) return;
+      const res = await fetch(`${API_URL}/api/social/suggested-users`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) setWriters(await res.json());
+    };
+    fetch_();
+  }, []);
+
+  if (!writers.length) return null;
+
+  return (
+    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+      <h3 className="font-semibold text-sm mb-3 text-slate-300">👥 Suggested Writers</h3>
+      <div className="space-y-3">
+        {writers.slice(0, 4).map((w: any) => (
+          <Link key={w.id} href={`/profile/${w.id}`}
+            className="flex items-center gap-3 hover:opacity-80 transition-opacity">
+            <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-xs font-bold shrink-0">
+              {w.name?.[0]?.toUpperCase() || '?'}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium truncate">{w.name}</p>
+              <p className="text-xs text-slate-500">{w.books?.length || 0} books</p>
+            </div>
+          </Link>
+        ))}
       </div>
     </div>
   );

@@ -19,6 +19,11 @@ export class BooksController {
     return this.booksService.getAllBooks(req.user.id);
   }
 
+  @Get('can-create-ai-book')
+  async canCreateAiBook(@Request() req: any) {
+    return this.booksService.checkCanCreateAiBook(req.user.id);
+  }
+
   @Get(':id')
   async getBook(@Param('id') id: string, @Request() req: any) {
     return this.booksService.getBookById(id, req.user.id);

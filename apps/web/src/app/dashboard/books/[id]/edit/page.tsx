@@ -1,4 +1,5 @@
 'use client';
+import AppNav from '@/components/AppNav';
 export const dynamic = 'force-dynamic';
 
 import { useEffect, useState } from 'react';

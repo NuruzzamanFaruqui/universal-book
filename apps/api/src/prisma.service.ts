@@ -38,6 +38,9 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
   get conversation() { return this.client.conversation; }
   get directMessage() { return this.client.directMessage; }
   get connection() { return this.client.connection; }
+  get creditTransaction() { return this.client.creditTransaction; }
+  get affiliateLink() { return this.client.affiliateLink; }
+  get affiliateEarning() { return this.client.affiliateEarning; }
 
   async onModuleInit() {
     try {

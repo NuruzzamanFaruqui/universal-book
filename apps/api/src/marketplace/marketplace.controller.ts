@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Body, Param, Query, Request, UseGuards } from '@nestjs/common';
 import { MarketplaceService } from './marketplace.service';
-import { FirebaseGuard } from '../auth/firebase.guard';
+import { FirebaseGuard, OptionalFirebaseGuard } from '../auth/firebase.guard';
 
 @Controller('marketplace')
 export class MarketplaceController {
@@ -29,14 +29,14 @@ export class MarketplaceController {
     return this.marketplaceService.getUserLibrary(req.user.id);
   }
 
-@Get('books/:bookId')
-async getBook(@Param('bookId') bookId: string) {
-  const book = await this.marketplaceService.getPublishedBookById(bookId);
-  if (!book) {
-    throw new Error('Book not found or not published');
+  @Get('books/:bookId')
+  @UseGuards(OptionalFirebaseGuard)
+  async getBook(@Param('bookId') bookId: string, @Request() req: any) {
+    const userId = req.user?.id;
+    const book = await this.marketplaceService.getPublishedBookById(bookId, userId);
+    if (!book) throw new Error('Book not found or not published');
+    return book;
   }
-  return book;
-}
 
   @Get('writers/:writerId')
   async getWriter(@Param('writerId') writerId: string) {

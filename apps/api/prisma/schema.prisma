@@ -25,6 +25,7 @@ model User {
   expertise             String[]
   isVerified            Boolean  @default(false)
   profilePhoto          String?
+  creditBalance         Float    @default(0)
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
   books         Book[]
@@ -51,6 +52,9 @@ model User {
   authorGroupMemberships AuthorGroupMember[]
   groupMemberships GroupMember[]
   groupMessages   GroupMessage[]
+  creditTransactions CreditTransaction[]
+  affiliateLinks     AffiliateLink[]
+  affiliateEarnings  AffiliateEarning[]
 }
 
 model Book {
@@ -71,6 +75,7 @@ model Book {
   follows     BookFollow[]
   authorGroups AuthorGroup[]
   posts        Post[]         @relation("postBook")
+  affiliateLinks AffiliateLink[]
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
 }
@@ -125,16 +130,19 @@ model PublishedBook {
 }
 
 model BookPurchase {
-  id              String        @id @default(uuid())
-  bookId          String
-  publishedBook   PublishedBook @relation(fields: [bookId], references: [bookId], onDelete: Cascade)
-  buyerId         String
-  buyer           User          @relation(fields: [buyerId], references: [id], onDelete: Cascade)
-  amount          Float
-  platformFee     Float
-  writerEarning   Float
-  stripeSessionId String?
-  createdAt       DateTime      @default(now())
+  id               String        @id @default(uuid())
+  bookId           String
+  publishedBook    PublishedBook @relation(fields: [bookId], references: [bookId], onDelete: Cascade)
+  buyerId          String
+  buyer            User          @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  amount           Float
+  platformFee      Float
+  writerEarning    Float
+  affiliateFee     Float         @default(0)
+  paymentMethod    String        @default("card")
+  stripeSessionId  String?
+  affiliateEarning AffiliateEarning?
+  createdAt        DateTime      @default(now())
 }
 
 model BookReview {
@@ -190,6 +198,60 @@ model WriterEarning {
   createdAt DateTime @default(now())
 }
 
+// ─── Credit System ────────────────────────────────────────────────────────────
+
+model CreditTransaction {
+  id          String              @id @default(uuid())
+  userId      String
+  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        CreditTransactionType
+  amount      Float
+  balanceAfter Float
+  description String
+  stripeSessionId String?
+  createdAt   DateTime            @default(now())
+}
+
+enum CreditTransactionType {
+  TOPUP
+  AI_BOOK_GENERATION
+  BOOK_PURCHASE
+  BOOK_SALE_EARNING
+  AFFILIATE_EARNING
+  REFUND
+}
+
+// ─── Affiliate System ─────────────────────────────────────────────────────────
+
+model AffiliateLink {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookId    String
+  book      Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  code      String   @unique
+  clicks    Int      @default(0)
+  createdAt DateTime @default(now())
+
+  earnings  AffiliateEarning[]
+
+  @@unique([userId, bookId])
+}
+
+model AffiliateEarning {
+  id              String        @id @default(uuid())
+  affiliateId     String
+  affiliate       User          @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  affiliateLinkId String
+  affiliateLink   AffiliateLink @relation(fields: [affiliateLinkId], references: [id], onDelete: Cascade)
+  bookPurchaseId  String        @unique
+  bookPurchase    BookPurchase  @relation(fields: [bookPurchaseId], references: [id], onDelete: Cascade)
+  amount          Float
+  createdAt       DateTime      @default(now())
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
 enum Plan {
   FREE
   AUTHOR
@@ -202,6 +264,8 @@ enum BookStatus {
   COMPLETE
   FAILED
 }
+
+// ─── Community & Social ───────────────────────────────────────────────────────
 
 model UserGroup {
   id          String   @id @default(uuid())

@@ -4,7 +4,8 @@ export const dynamic = 'force-dynamic';
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { BookOpen, Search, Filter } from 'lucide-react';
+import { BookOpen, Search } from 'lucide-react';
+import MarketingNav from '@/components/MarketingNav';
 
 const API_URL = "https://api.universal-book.com";
 const GENRES = ['All','Fantasy','Sci-Fi','Romance','Thriller','Self-Help','Business','Mystery','Horror','Biography'];
@@ -43,25 +44,9 @@ export default function BooksPage() {
     fetchBooks();
   };
 
-  const getAvgRating = (reviews: any[]) => {
-    if (!reviews?.length) return null;
-    return (reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length).toFixed(1);
-  };
-
   return (
     <div className="min-h-screen bg-slate-900 text-white">
-      <nav className="sticky top-0 z-50 bg-slate-900/90 backdrop-blur border-b border-slate-800">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2 text-xl font-bold">
-            <BookOpen className="text-blue-400" size={28} />
-            <span>Universal Book</span>
-          </Link>
-          <div className="flex gap-3">
-            <Link href="/auth/login" className="px-4 py-2 text-slate-400 hover:text-white text-sm">Login</Link>
-            <Link href="/auth/register" className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-semibold">Start Writing</Link>
-          </div>
-        </div>
-      </nav>
+      <MarketingNav />
 
       <div className="max-w-7xl mx-auto px-6 py-10">
         <div className="mb-8">
@@ -69,7 +54,6 @@ export default function BooksPage() {
           <p className="text-slate-400">{total} books available</p>
         </div>
 
-        {/* Search & Filter */}
         <div className="flex gap-4 mb-6 flex-wrap">
           <form onSubmit={handleSearch} className="flex gap-2 flex-1">
             <div className="relative flex-1">
@@ -82,7 +66,6 @@ export default function BooksPage() {
           </form>
         </div>
 
-        {/* Genre Filter */}
         <div className="flex gap-2 flex-wrap mb-8">
           {GENRES.map(g => (
             <button key={g} onClick={() => { setGenre(g); setPage(1); }}
@@ -94,7 +77,6 @@ export default function BooksPage() {
           ))}
         </div>
 
-        {/* Books Grid */}
         {loading ? (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
             {[1,2,3,4,5,6,7,8].map(i => <div key={i} className="bg-slate-800 rounded-xl h-56 animate-pulse" />)}
@@ -132,18 +114,13 @@ export default function BooksPage() {
           </div>
         )}
 
-        {/* Pagination */}
         {total > 12 && (
           <div className="flex justify-center gap-3 mt-10">
             <button onClick={() => setPage(p => Math.max(1, p-1))} disabled={page === 1}
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 rounded-lg text-sm">
-              Previous
-            </button>
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 rounded-lg text-sm">Previous</button>
             <span className="px-4 py-2 text-slate-400 text-sm">Page {page} of {Math.ceil(total/12)}</span>
             <button onClick={() => setPage(p => p+1)} disabled={page >= Math.ceil(total/12)}
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 rounded-lg text-sm">
-              Next
-            </button>
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 rounded-lg text-sm">Next</button>
           </div>
         )}
       </div>

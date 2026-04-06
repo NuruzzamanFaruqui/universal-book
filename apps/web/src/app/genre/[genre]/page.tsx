@@ -1,4 +1,5 @@
 'use client';
+import MarketingNav from '@/components/MarketingNav';
 export const dynamic = 'force-dynamic';
 
 import { useEffect, useState } from 'react';
@@ -38,18 +39,7 @@ export default function GenrePage() {
 
   return (
     <div className="min-h-screen bg-slate-900 text-white">
-      <nav className="sticky top-0 z-50 bg-slate-900/90 backdrop-blur border-b border-slate-800">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2 text-xl font-bold">
-            <BookOpen className="text-blue-400" size={28} />
-            <span>Universal Book</span>
-          </Link>
-          <div className="flex gap-3">
-            <Link href="/auth/login" className="px-4 py-2 text-slate-400 hover:text-white text-sm">Login</Link>
-            <Link href="/auth/register" className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-semibold">Start Writing</Link>
-          </div>
-        </div>
-      </nav>
+      <MarketingNav />
 
       <div className="max-w-6xl mx-auto px-6 py-10">
         <Link href="/books" className="flex items-center gap-2 text-slate-400 hover:text-white mb-8 transition">

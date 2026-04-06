@@ -5,7 +5,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Users, Send, Globe, Lock } from 'lucide-react';
-import DashboardNav from '@/components/DashboardNav';
+import AppNav from '@/components/AppNav';
 
 const API_URL = "https://api.universal-book.com";
 
@@ -101,7 +101,7 @@ export default function GroupDetailPage() {
 
   return (
     <div className="min-h-screen bg-slate-900 text-white flex flex-col">
-      <DashboardNav />
+      <AppNav />
       <div className="max-w-6xl mx-auto px-8 py-8 flex-1 w-full">
         <Link href="/groups" className="flex items-center gap-2 text-slate-400 hover:text-white mb-6 transition">
           <ArrowLeft size={16} /> Back to Groups

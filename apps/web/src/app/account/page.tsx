@@ -1,4 +1,5 @@
 'use client';
+import AppNav from '@/components/AppNav';
 export const dynamic = 'force-dynamic';
 
 import { useEffect, useState } from 'react';
@@ -95,15 +96,7 @@ export default function AccountPage() {
 
   return (
     <div className="min-h-screen bg-slate-900 text-white">
-      <nav className="flex items-center justify-between px-8 py-4 border-b border-slate-700">
-        <div className="flex items-center gap-2 text-xl font-bold">
-          <BookOpen className="text-blue-400" size={24} />
-          <span>Universal Book</span>
-        </div>
-        <Link href="/dashboard" className="flex items-center gap-2 text-slate-400 hover:text-white">
-          <ArrowLeft size={18} /> Back to Dashboard
-        </Link>
-      </nav>
+      <AppNav />
 
       <div className="max-w-2xl mx-auto px-8 py-12">
         <h1 className="text-3xl font-bold mb-8">My Account</h1>

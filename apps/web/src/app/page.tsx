@@ -1,4 +1,5 @@
 'use client';
+import MarketingNav from '@/components/MarketingNav';
 export const dynamic = 'force-dynamic';
 
 import { useEffect, useState } from 'react';
@@ -137,72 +138,7 @@ export default function MarketplacePage() {
   return (
     <div className="min-h-screen bg-slate-900 text-white">
       {/* NAV */}
-      <nav className="sticky top-0 z-50 bg-slate-900/95 backdrop-blur border-b border-slate-800">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
-          <Link href="/" className="flex items-center gap-2 text-xl font-bold flex-shrink-0">
-            <BookOpen className="text-blue-400" size={28} />
-            <span className="hidden sm:block">Universal Book</span>
-          </Link>
-
-          {/* Search Bar */}
-          <form onSubmit={handleSearch} className="flex-1 max-w-xl hidden md:flex">
-            <div className="relative w-full">
-              <Search className="absolute left-3 top-2.5 text-slate-500" size={18} />
-              <input value={search} onChange={e => setSearch(e.target.value)}
-                placeholder="Search books, authors, genres..."
-                className="w-full bg-slate-800 border border-slate-700 rounded-xl pl-10 pr-4 py-2 text-white text-sm focus:outline-none focus:border-blue-500" />
-            </div>
-          </form>
-
-          {/* Nav Links */}
-          <div className="flex items-center gap-2">
-            <Link href="/books" className="hidden md:block text-slate-400 hover:text-white text-sm transition px-2">Browse</Link>
-            <Link href="/writers" className="hidden md:block text-slate-400 hover:text-white text-sm transition px-2">Writers</Link>
-
-            {isLoggedIn ? (
-              <>
-                <Link href="/feed" className="hidden md:flex items-center gap-1 text-slate-400 hover:text-white text-sm transition px-2">
-                  🏠 Feed
-                </Link>
-                <Link href="/dashboard/new-book"
-                  className="hidden md:flex items-center gap-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-semibold transition">
-                  <PenSquare size={14} /> Write
-                </Link>
-                <Link href="/notifications" className="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition">
-                  <Bell size={18} />
-                </Link>
-                <Link href={`/profile/${user?.id}`}
-                  className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center font-bold text-sm">
-                  {userLoading ? '...' : (user?.name?.[0]?.toUpperCase() || '?')}
-                </Link>
-                <button onClick={handleLogout}
-                  className="hidden md:flex items-center gap-1 p-2 text-slate-400 hover:text-red-400 rounded-lg hover:bg-slate-800 transition text-sm">
-                  <LogOut size={16} />
-                </button>
-              </>
-            ) : (
-              <>
-                <Link href="/auth/login" className="px-3 py-1.5 text-slate-400 hover:text-white text-sm transition">Login</Link>
-                <Link href="/auth/register" className="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-semibold transition">
-                  Start Writing Free
-                </Link>
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* Mobile Search */}
-        <div className="md:hidden px-4 pb-3">
-          <form onSubmit={handleSearch}>
-            <div className="relative">
-              <Search className="absolute left-3 top-2.5 text-slate-500" size={16} />
-              <input value={search} onChange={e => setSearch(e.target.value)}
-                placeholder="Search books..."
-                className="w-full bg-slate-800 border border-slate-700 rounded-xl pl-9 pr-4 py-2 text-white text-sm focus:outline-none focus:border-blue-500" />
-            </div>
-          </form>
-        </div>
-      </nav>
+      <MarketingNav />
 
       {/* HERO */}
       <div className="bg-gradient-to-r from-blue-950 via-slate-900 to-slate-900 py-12 px-4">

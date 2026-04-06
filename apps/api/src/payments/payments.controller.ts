@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Request, UseGuards, Headers, Req } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, Request, UseGuards, Headers, Req } from '@nestjs/common';
 import { PaymentsService } from './payments.service';
 import { FirebaseGuard } from '../auth/firebase.guard';
 
@@ -6,20 +6,95 @@ import { FirebaseGuard } from '../auth/firebase.guard';
 export class PaymentsController {
   constructor(private readonly paymentsService: PaymentsService) {}
 
-  @Post('checkout')
+  // ─── Credit Balance ───────────────────────────────────────────────────────
+
+  @Get('balance')
   @UseGuards(FirebaseGuard)
-  async createCheckout(
-    @Request() req: any,
-    @Body() body: { plan: string },
-  ) {
-    return this.paymentsService.createCheckoutSession(
+  async getBalance(@Request() req: any) {
+    const balance = await this.paymentsService.getCreditBalance(req.user.id);
+    return { balance };
+  }
+
+  @Get('transactions')
+  @UseGuards(FirebaseGuard)
+  async getTransactions(@Request() req: any) {
+    return this.paymentsService.getCreditTransactions(req.user.id);
+  }
+
+  // ─── Top-up Packages ─────────────────────────────────────────────────────
+
+  @Get('topup-packages')
+  getTopupPackages() {
+    return this.paymentsService.getTopupPackages();
+  }
+
+  // ─── Top-up with Stripe ───────────────────────────────────────────────────
+
+  @Post('topup')
+  @UseGuards(FirebaseGuard)
+  async createTopup(@Request() req: any, @Body() body: { amount: number }) {
+    return this.paymentsService.createTopupSession(
       req.user.id,
       req.user.email,
-      body.plan,
-      'https://universal-book.com/subscribe/success',
-      'https://universal-book.com/account/subscription',
+      body.amount,
     );
   }
+
+  // ─── Buy Book with Card (Stripe) ──────────────────────────────────────────
+
+  @Post('buy-book/card')
+  @UseGuards(FirebaseGuard)
+  async buyBookWithCard(
+    @Request() req: any,
+    @Body() body: { bookId: string; affiliateCode?: string },
+  ) {
+    return this.paymentsService.createBookPurchaseSession(
+      req.user.id,
+      req.user.email,
+      body.bookId,
+      body.affiliateCode,
+    );
+  }
+
+  // ─── Buy Book with Credits ────────────────────────────────────────────────
+
+  @Post('buy-book/credits')
+  @UseGuards(FirebaseGuard)
+  async buyBookWithCredits(
+    @Request() req: any,
+    @Body() body: { bookId: string; affiliateCode?: string },
+  ) {
+    return this.paymentsService.purchaseBookWithCredits(
+      req.user.id,
+      body.bookId,
+      body.affiliateCode,
+    );
+  }
+
+  // ─── Affiliate Links ──────────────────────────────────────────────────────
+
+  @Post('affiliate/link')
+  @UseGuards(FirebaseGuard)
+  async getAffiliateLink(
+    @Request() req: any,
+    @Body() body: { bookId: string },
+  ) {
+    return this.paymentsService.getOrCreateAffiliateLink(req.user.id, body.bookId);
+  }
+
+  @Post('affiliate/click/:code')
+  async trackClick(@Param('code') code: string) {
+    await this.paymentsService.trackAffiliateLinkClick(code);
+    return { tracked: true };
+  }
+
+  @Get('affiliate/stats')
+  @UseGuards(FirebaseGuard)
+  async getAffiliateStats(@Request() req: any) {
+    return this.paymentsService.getAffiliateStats(req.user.id);
+  }
+
+  // ─── Stripe Webhook ───────────────────────────────────────────────────────
 
   @Post('webhook')
   async handleWebhook(

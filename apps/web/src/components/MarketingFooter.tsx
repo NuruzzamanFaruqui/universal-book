@@ -18,7 +18,7 @@ export default function MarketingFooter() {
             <div className="font-bold mb-4 text-sm text-slate-300 uppercase tracking-wider">Product</div>
             <div className="space-y-2 text-sm text-slate-400">
               <div><Link href="/features" className="hover:text-white transition">Features</Link></div>
-              <div><Link href="/pricing" className="hover:text-white transition">Pricing</Link></div>
+
               <div><Link href="/auth/register" className="hover:text-white transition">Get Started</Link></div>
             </div>
           </div>

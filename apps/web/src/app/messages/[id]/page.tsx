@@ -1,4 +1,5 @@
 'use client';
+import AppNav from '@/components/AppNav';
 export const dynamic = 'force-dynamic';
 
 import { useEffect, useState, useRef } from 'react';
@@ -119,22 +120,7 @@ export default function ChatPage() {
 
   return (
     <div className="min-h-screen bg-slate-900 text-white flex flex-col">
-      <nav className="sticky top-0 z-50 bg-slate-900/95 backdrop-blur border-b border-slate-800">
-        <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-4">
-          <Link href="/messages" className="text-slate-400 hover:text-white transition">
-            <ArrowLeft size={20} />
-          </Link>
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center font-bold text-sm">
-              {otherUser?.name?.[0] || '?'}
-            </div>
-            <div>
-              <div className="font-semibold text-sm">{otherUser?.name || 'Chat'}</div>
-              <div className="text-xs text-green-400">● Online</div>
-            </div>
-          </div>
-        </div>
-      </nav>
+      <AppNav />
 
       <div className="flex-1 overflow-y-auto max-w-2xl mx-auto w-full px-4 py-4 space-y-3">
         {loading ? (

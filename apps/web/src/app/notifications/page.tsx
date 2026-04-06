@@ -1,4 +1,5 @@
 'use client';
+import AppNav from '@/components/AppNav';
 export const dynamic = 'force-dynamic';
 
 import { useEffect, useState } from 'react';
@@ -63,16 +64,7 @@ export default function NotificationsPage() {
 
   return (
     <div className="min-h-screen bg-slate-900 text-white">
-      <nav className="sticky top-0 z-50 bg-slate-900/95 backdrop-blur border-b border-slate-800">
-        <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-4">
-          <Link href="/feed" className="text-slate-400 hover:text-white transition">
-            <ArrowLeft size={20} />
-          </Link>
-          <h1 className="font-bold text-lg flex items-center gap-2">
-            <Bell size={20} className="text-blue-400" /> Notifications
-          </h1>
-        </div>
-      </nav>
+      <AppNav />
 
       <div className="max-w-2xl mx-auto px-4 py-6 space-y-4">
         {/* Pending Connection Requests */}

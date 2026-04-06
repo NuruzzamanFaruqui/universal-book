@@ -4,153 +4,220 @@ export const dynamic = 'force-dynamic';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { DollarSign, BookOpen, TrendingUp, Users } from 'lucide-react';
-import DashboardNav from '@/components/DashboardNav';
+import { DollarSign, TrendingUp, BookOpen, Link2, Wallet, ArrowUpRight } from 'lucide-react';
+import AppNav from '@/components/AppNav';
 
-const API_URL = "https://api.universal-book.com";
+const API_URL = 'https://api.universal-book.com';
 
 async function getFreshToken(): Promise<string | null> {
   try {
     const { auth } = await import('@/lib/firebase');
     if (auth?.currentUser) return await auth.currentUser.getIdToken(true);
   } catch (e) {}
-  return localStorage.getItem('ub_token');
+  return null;
 }
 
 export default function EarningsPage() {
   const router = useRouter();
+  const [balance, setBalance] = useState<number>(0);
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [affiliateStats, setAffiliateStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState({ totalEarnings: 0, pendingEarnings: 0, totalSales: 0, totalBooks: 0 });
-  const [books, setBooks] = useState<any[]>([]);
 
   useEffect(() => {
-    const token = localStorage.getItem('ub_token');
-    if (!token) { router.push('/auth/login'); return; }
-    fetchData();
+    fetchAll();
   }, []);
 
-  const fetchData = async () => {
+  const fetchAll = async () => {
+    const token = await getFreshToken();
+    if (!token) { router.push('/auth/login'); return; }
     try {
-      const token = await getFreshToken();
-      const res = await fetch(`${API_URL}/api/books`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (res.ok) {
-        const booksData = await res.json();
-        setBooks(booksData);
-        const publishedBooks = booksData.filter((b: any) => b.published);
-        const totalSales = publishedBooks.reduce((acc: number, b: any) => acc + (b.published?.totalSales || 0), 0);
-        const totalEarnings = publishedBooks.reduce((acc: number, b: any) => acc + (b.published?.totalEarnings || 0), 0);
-        setStats({ totalEarnings, pendingEarnings: totalEarnings * 0.7, totalSales, totalBooks: publishedBooks.length });
-      }
+      const [balRes, txRes, affRes] = await Promise.all([
+        fetch(`${API_URL}/api/payments/balance`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${API_URL}/api/payments/transactions`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${API_URL}/api/payments/affiliate/stats`, { headers: { Authorization: `Bearer ${token}` } }),
+      ]);
+      if (balRes.ok) setBalance((await balRes.json()).balance);
+      if (txRes.ok) setTransactions(await txRes.json());
+      if (affRes.ok) setAffiliateStats(await affRes.json());
     } catch (e) {}
-    finally { setLoading(false); }
+    setLoading(false);
   };
 
+  const authorEarnings = transactions
+    .filter(tx => tx.type === 'BOOK_SALE_EARNING')
+    .reduce((sum, tx) => sum + tx.amount, 0);
+
+  const affiliateEarnings = transactions
+    .filter(tx => tx.type === 'AFFILIATE_EARNING')
+    .reduce((sum, tx) => sum + tx.amount, 0);
+
+  const totalSpent = transactions
+    .filter(tx => ['AI_BOOK_GENERATION', 'BOOK_PURCHASE'].includes(tx.type))
+    .reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
+
+  const formatType = (type: string) => {
+    const map: Record<string, string> = {
+      TOPUP: '💳 Credit Top-up',
+      AI_BOOK_GENERATION: '🤖 AI Book Generation',
+      BOOK_PURCHASE: '📖 Book Purchase',
+      BOOK_SALE_EARNING: '💰 Book Sale Earning',
+      AFFILIATE_EARNING: '🔗 Affiliate Commission',
+      REFUND: '↩️ Refund',
+    };
+    return map[type] || type;
+  };
+
+  const isCredit = (type: string) =>
+    ['TOPUP', 'BOOK_SALE_EARNING', 'AFFILIATE_EARNING', 'REFUND'].includes(type);
+
   if (loading) return (
-    <div className="min-h-screen bg-slate-900 flex items-center justify-center">
-      <div className="text-white text-xl">Loading earnings...</div>
+    <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+      <p className="text-white">Loading...</p>
     </div>
   );
 
-  const publishedBooks = books.filter((b: any) => b.published);
-
   return (
-    <div className="min-h-screen bg-slate-900 text-white">
-      <DashboardNav />
-      <div className="max-w-5xl mx-auto px-8 py-12">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">Writer Earnings</h1>
-          <p className="text-slate-400">Track your book sales and revenue</p>
+    <div className="min-h-screen bg-slate-950 text-white">
+      <AppNav />
+
+      <div className="max-w-5xl mx-auto px-6 py-8 space-y-8">
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold">Earnings & Credits</h1>
+          <Link
+            href="/account/topup"
+            className="flex items-center gap-2 bg-emerald-700 hover:bg-emerald-600 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors"
+          >
+            <Wallet size={16} />
+            Top Up Credits
+          </Link>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
-          {[
-            { label: 'Total Earnings', value: `$${stats.totalEarnings.toFixed(2)}`, icon: <DollarSign className="text-green-400" size={20} /> },
-            { label: 'Your Share (70%)', value: `$${stats.pendingEarnings.toFixed(2)}`, icon: <TrendingUp className="text-blue-400" size={20} /> },
-            { label: 'Total Sales', value: stats.totalSales, icon: <Users className="text-purple-400" size={20} /> },
-            { label: 'Published Books', value: stats.totalBooks, icon: <BookOpen className="text-yellow-400" size={20} /> },
-          ].map((stat, i) => (
-            <div key={i} className="bg-slate-800 border border-slate-700 rounded-xl p-5">
-              <div className="w-8 h-8 bg-slate-700 rounded-lg flex items-center justify-center mb-3">{stat.icon}</div>
-              <div className="text-2xl font-bold mb-1">{stat.value}</div>
-              <div className="text-slate-400 text-xs">{stat.label}</div>
+        {/* Stats Cards */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="bg-emerald-900/30 border border-emerald-700/50 rounded-2xl p-5">
+            <div className="flex items-center gap-2 text-emerald-400 mb-2">
+              <Wallet size={18} />
+              <span className="text-sm">Balance</span>
             </div>
-          ))}
-        </div>
+            <p className="text-3xl font-bold text-emerald-400">${balance.toFixed(2)}</p>
+          </div>
 
-        <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 mb-8">
-          <h2 className="font-bold text-lg mb-4">Revenue Model</h2>
-          <div className="grid grid-cols-3 gap-4 text-center">
-            <div className="bg-slate-700 rounded-lg p-4">
-              <div className="text-2xl font-bold text-blue-400">100%</div>
-              <div className="text-slate-400 text-sm">Book Sale Price</div>
+          <div className="bg-blue-900/30 border border-blue-700/50 rounded-2xl p-5">
+            <div className="flex items-center gap-2 text-blue-400 mb-2">
+              <BookOpen size={18} />
+              <span className="text-sm">Book Sales</span>
             </div>
-            <div className="bg-slate-700 rounded-lg p-4">
-              <div className="text-2xl font-bold text-red-400">30%</div>
-              <div className="text-slate-400 text-sm">Platform Fee</div>
+            <p className="text-3xl font-bold text-blue-400">${authorEarnings.toFixed(2)}</p>
+          </div>
+
+          <div className="bg-purple-900/30 border border-purple-700/50 rounded-2xl p-5">
+            <div className="flex items-center gap-2 text-purple-400 mb-2">
+              <Link2 size={18} />
+              <span className="text-sm">Affiliate</span>
             </div>
-            <div className="bg-slate-700 rounded-lg p-4">
-              <div className="text-2xl font-bold text-green-400">70%</div>
-              <div className="text-slate-400 text-sm">Your Earnings</div>
+            <p className="text-3xl font-bold text-purple-400">${affiliateEarnings.toFixed(2)}</p>
+          </div>
+
+          <div className="bg-slate-800/50 border border-slate-700 rounded-2xl p-5">
+            <div className="flex items-center gap-2 text-slate-400 mb-2">
+              <TrendingUp size={18} />
+              <span className="text-sm">Total Spent</span>
             </div>
+            <p className="text-3xl font-bold text-slate-300">${totalSpent.toFixed(2)}</p>
           </div>
         </div>
 
-        <h2 className="text-xl font-bold mb-4">Book Performance</h2>
-        {publishedBooks.length === 0 ? (
-          <div className="text-center py-16 border-2 border-dashed border-slate-700 rounded-2xl">
-            <DollarSign className="mx-auto text-slate-600 mb-4" size={40} />
-            <h3 className="text-slate-400 font-semibold mb-2">No published books yet</h3>
-            <p className="text-slate-500 text-sm mb-4">Publish a book to start earning</p>
-            <Link href="/dashboard" className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-semibold">Go to Dashboard</Link>
-          </div>
-        ) : (
-          <div className="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-slate-700">
-                  <th className="text-left px-6 py-3 text-xs text-slate-400 uppercase">Book</th>
-                  <th className="text-left px-6 py-3 text-xs text-slate-400 uppercase">Price</th>
-                  <th className="text-left px-6 py-3 text-xs text-slate-400 uppercase">Sales</th>
-                  <th className="text-left px-6 py-3 text-xs text-slate-400 uppercase">Revenue</th>
-                  <th className="text-left px-6 py-3 text-xs text-slate-400 uppercase">Your Share</th>
-                  <th className="text-left px-6 py-3 text-xs text-slate-400 uppercase">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {publishedBooks.map((book: any) => (
-                  <tr key={book.id} className="border-b border-slate-700 hover:bg-slate-700/30 transition">
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 bg-blue-900/50 rounded-lg flex items-center justify-center">
-                          <BookOpen size={14} className="text-blue-400" />
-                        </div>
-                        <div>
-                          <div className="text-sm font-medium line-clamp-1">{book.title}</div>
-                          <div className="text-xs text-slate-400">{book.genre}</div>
+        {/* Affiliate Links */}
+        {affiliateStats?.links?.length > 0 && (
+          <div>
+            <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+              <Link2 size={18} className="text-purple-400" />
+              Your Affiliate Links
+            </h2>
+            <div className="space-y-3">
+              {affiliateStats.links.map((link: any) => {
+                const linkEarnings = link.earnings.reduce((s: number, e: any) => s + e.amount, 0);
+                const shareUrl = `${window.location.origin}/books/${link.bookId}?ref=${link.code}`;
+                return (
+                  <div key={link.id} className="bg-slate-800/50 border border-slate-700 rounded-xl p-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-sm truncate">{link.book?.title}</p>
+                        <p className="text-xs text-slate-500 mt-1">
+                          {link.clicks} clicks • {link.earnings.length} sales
+                        </p>
+                        <div className="flex gap-2 mt-2">
+                          <input
+                            readOnly
+                            value={shareUrl}
+                            className="flex-1 bg-slate-700 border border-slate-600 rounded-lg px-3 py-1.5 text-xs text-slate-300 truncate"
+                          />
+                          <button
+                            onClick={() => navigator.clipboard.writeText(shareUrl)}
+                            className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-xs"
+                          >
+                            Copy
+                          </button>
                         </div>
                       </div>
-                    </td>
-                    <td className="px-6 py-4 text-sm">{book.published?.price === 0 ? <span className="text-green-400">Free</span> : `$${book.published?.price}`}</td>
-                    <td className="px-6 py-4 text-sm">{book.published?.totalSales || 0}</td>
-                    <td className="px-6 py-4 text-sm">${(book.published?.totalEarnings || 0).toFixed(2)}</td>
-                    <td className="px-6 py-4 text-sm text-green-400">${((book.published?.totalEarnings || 0) * 0.7).toFixed(2)}</td>
-                    <td className="px-6 py-4">
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${book.published?.isPublic ? 'bg-green-900 text-green-300' : 'bg-slate-700 text-slate-400'}`}>
-                        {book.published?.isPublic ? 'Published' : 'Draft'}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                      <div className="text-right shrink-0">
+                        <p className="text-purple-400 font-bold">${linkEarnings.toFixed(2)}</p>
+                        <p className="text-xs text-slate-500">earned</p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
 
-        <div className="mt-8 bg-blue-900/20 border border-blue-800 rounded-xl p-6">
-          <h3 className="font-bold mb-2">💰 Payout Information</h3>
-          <p className="text-slate-400 text-sm">Stripe Connect integration coming soon. Once enabled, earnings will be automatically transferred to your bank account monthly.</p>
+        {/* Transaction History */}
+        <div>
+          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            <DollarSign size={18} className="text-slate-400" />
+            Transaction History
+          </h2>
+          {transactions.length === 0 ? (
+            <div className="text-center py-16 text-slate-500">
+              <DollarSign size={48} className="mx-auto mb-4 opacity-20" />
+              <p className="text-lg">No transactions yet</p>
+              <p className="text-sm mt-1">Start by topping up your credits</p>
+              <Link
+                href="/account/topup"
+                className="inline-block mt-4 bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-xl text-sm"
+              >
+                Add Credits
+              </Link>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {transactions.map((tx: any) => (
+                <div
+                  key={tx.id}
+                  className="flex items-center justify-between bg-slate-800/50 border border-slate-700 rounded-xl px-5 py-4"
+                >
+                  <div>
+                    <p className="font-medium text-sm">{formatType(tx.type)}</p>
+                    <p className="text-xs text-slate-500">{tx.description}</p>
+                    <p className="text-xs text-slate-600 mt-0.5">
+                      {new Date(tx.createdAt).toLocaleDateString('en-US', {
+                        month: 'short', day: 'numeric', year: 'numeric',
+                        hour: '2-digit', minute: '2-digit',
+                      })}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className={`font-bold ${isCredit(tx.type) ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {isCredit(tx.type) ? '+' : '-'}${Math.abs(tx.amount).toFixed(2)}
+                    </p>
+                    <p className="text-xs text-slate-500">Balance: ${tx.balanceAfter.toFixed(2)}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

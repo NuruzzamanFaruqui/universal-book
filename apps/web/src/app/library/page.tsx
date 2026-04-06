@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { BookOpen, ShoppingBag, Clock } from 'lucide-react';
-import DashboardNav from '@/components/DashboardNav';
+import AppNav from '@/components/AppNav';
 
 const API_URL = "https://api.universal-book.com";
 
@@ -47,7 +47,7 @@ export default function LibraryPage() {
 
   return (
     <div className="min-h-screen bg-slate-900 text-white">
-      <DashboardNav />
+      <AppNav />
       <div className="max-w-5xl mx-auto px-8 py-12">
         <div className="mb-8">
           <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">

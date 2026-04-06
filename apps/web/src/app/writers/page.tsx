@@ -1,4 +1,5 @@
 'use client';
+import MarketingNav from '@/components/MarketingNav';
 export const dynamic = 'force-dynamic';
 
 import { useEffect, useState } from 'react';
@@ -28,18 +29,7 @@ export default function WritersPage() {
 
   return (
     <div className="min-h-screen bg-slate-900 text-white">
-      <nav className="sticky top-0 z-50 bg-slate-900/90 backdrop-blur border-b border-slate-800">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2 text-xl font-bold">
-            <BookOpen className="text-blue-400" size={28} />
-            <span>Universal Book</span>
-          </Link>
-          <div className="flex gap-3">
-            <Link href="/auth/login" className="px-4 py-2 text-slate-400 hover:text-white text-sm">Login</Link>
-            <Link href="/auth/register" className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-semibold">Start Writing</Link>
-          </div>
-        </div>
-      </nav>
+      <MarketingNav />
 
       <div className="max-w-6xl mx-auto px-6 py-10">
         <div className="mb-8">
@@ -49,7 +39,6 @@ export default function WritersPage() {
           <p className="text-slate-400">Discover talented writers on Universal Book</p>
         </div>
 
-        {/* Search */}
         <div className="relative max-w-md mb-8">
           <Search className="absolute left-3 top-2.5 text-slate-500" size={16} />
           <input value={search} onChange={e => setSearch(e.target.value)}
@@ -66,9 +55,7 @@ export default function WritersPage() {
             <Users className="mx-auto text-slate-600 mb-4" size={48} />
             <h2 className="text-xl font-semibold text-slate-400 mb-2">No writers found</h2>
             <p className="text-slate-500 mb-6">Be the first writer on Universal Book!</p>
-            <Link href="/auth/register" className="px-6 py-3 bg-blue-600 hover:bg-blue-500 rounded-lg font-semibold">
-              Start Writing
-            </Link>
+            <Link href="/auth/register" className="px-6 py-3 bg-blue-600 hover:bg-blue-500 rounded-lg font-semibold">Start Writing</Link>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
