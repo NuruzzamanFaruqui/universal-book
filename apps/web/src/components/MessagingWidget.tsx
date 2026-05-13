@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { MessageCircle, X, Send, ChevronDown, Edit, Minus } from 'lucide-react';
-import { ref, onValue, push, off, set } from 'firebase/database';
+import { ref, onValue, push, off, set, onDisconnect } from 'firebase/database';
 import { database } from '@/lib/firebase';
 
 const API_URL = "https://api.universal-book.com";
@@ -63,8 +63,10 @@ export default function MessagingWidget() {
     if (!currentUser) return;
     fetchConversations();
     if (database) {
-      const onlineRef = ref(database, `online/${currentUser.id}`);
-      set(onlineRef, { name: currentUser.name, lastSeen: Date.now() });
+const onlineRef = ref(database, `online/${currentUser.id}`);
+
+onDisconnect(onlineRef).remove();
+set(onlineRef, { name: currentUser.name, lastSeen: Date.now() });
       const allOnlineRef = ref(database, 'online');
       onValue(allOnlineRef, (snapshot) => {
         setOnlineLoaded(true);
