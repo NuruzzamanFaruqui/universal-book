@@ -5,16 +5,10 @@ import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Wallet, CreditCard, CheckCircle, ArrowLeft, Clock } from 'lucide-react';
+import { getToken as getFreshToken } from '@/lib/auth';
+import { API_URL } from '@/lib/config';
 
-const API_URL = 'https://api.universal-book.com';
 
-async function getFreshToken(): Promise<string | null> {
-  try {
-    const { auth } = await import('@/lib/firebase');
-    if (auth?.currentUser) return await auth.currentUser.getIdToken(true);
-  } catch (e) {}
-  return null;
-}
 
 const PACKAGES = [
   { id: 'topup_5',  amount: 5,  label: '$5',  description: 'Try it out', popular: false },

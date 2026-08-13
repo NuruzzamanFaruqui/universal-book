@@ -1,7 +1,8 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { AiService } from '../ai/ai.service';
 import { PaymentsService } from '../payments/payments.service';
+import { PRESENCE_WINDOW_MS } from '../users/users.service';
 
 @Injectable()
 export class BooksService {
@@ -157,13 +158,91 @@ export class BooksService {
     return updatedChapter;
   }
 
+  /**
+   * Who may write to a chapter: the book's owner, or a member of an author
+   * group linked to that book.
+   */
+  private async assertCanEditChapter(bookId: string, chapterId: string, userId: string) {
+    const chapter = await this.prisma.chapter.findFirst({
+      where: { id: chapterId, bookId },
+      select: { id: true, book: { select: { userId: true } } },
+    });
+    if (!chapter) throw new NotFoundException('Chapter not found');
+    if (chapter.book.userId === userId) return;
+
+    const collaborator = await this.prisma.authorGroup.findFirst({
+      where: { bookId, members: { some: { userId } } },
+      select: { id: true },
+    });
+    if (!collaborator) throw new ForbiddenException('You do not have edit access to this book');
+  }
+
   async updateChapterContent(bookId: string, chapterId: string, userId: string, content: string) {
-    const book = await this.prisma.book.findFirst({ where: { id: bookId, userId } });
-    if (!book) throw new Error('Book not found');
+    await this.assertCanEditChapter(bookId, chapterId, userId);
     return this.prisma.chapter.update({
       where: { id: chapterId },
-      data: { content },
+      data: { content, updatedById: userId },
     });
+  }
+
+  // ─── Collaborative editing ────────────────────────────────────────────────
+  // Last-writer-wins on the whole chapter body. Clients debounce their writes
+  // and poll for changes from others.
+
+  /**
+   * Poll target for the editor. Records the caller's presence, then returns the
+   * chapter body only when someone *else* has changed it since `since`, so a
+   * client never has its own in-flight edit echoed back over the cursor.
+   */
+  async syncChapter(bookId: string, chapterId: string, userId: string, since?: string) {
+    await this.assertCanEditChapter(bookId, chapterId, userId);
+
+    await this.prisma.editorPresence.upsert({
+      where: { userId_chapterId: { userId, chapterId } },
+      create: { userId, chapterId, lastSeenAt: new Date() },
+      update: { lastSeenAt: new Date() },
+    });
+
+    const cutoff = new Date(Date.now() - PRESENCE_WINDOW_MS);
+    const [chapter, present] = await Promise.all([
+      this.prisma.chapter.findUnique({
+        where: { id: chapterId },
+        select: { content: true, updatedAt: true, updatedById: true },
+      }),
+      this.prisma.editorPresence.findMany({
+        where: { chapterId, lastSeenAt: { gte: cutoff } },
+        select: {
+          userId: true,
+          user: { select: { name: true, avatarUrl: true, profilePhoto: true } },
+        },
+      }),
+    ]);
+
+    const activeUsers = present.map((p) => ({
+      userId: p.userId,
+      name: p.user.name || 'Anonymous',
+      avatarUrl: p.user.profilePhoto || p.user.avatarUrl || null,
+    }));
+
+    const sinceDate = since ? new Date(since) : null;
+    const isStale =
+      sinceDate && !isNaN(sinceDate.getTime())
+        ? chapter!.updatedAt > sinceDate
+        : true;
+    const isOwnEdit = chapter!.updatedById === userId;
+
+    return {
+      activeUsers,
+      updatedAt: chapter!.updatedAt,
+      updatedById: chapter!.updatedById,
+      // Null means "you're already current" — the client leaves the DOM alone.
+      content: isStale && !isOwnEdit ? chapter!.content : null,
+    };
+  }
+
+  async leaveChapter(chapterId: string, userId: string) {
+    await this.prisma.editorPresence.deleteMany({ where: { userId, chapterId } });
+    return { ok: true };
   }
 
   async importBook(userId: string, data: {

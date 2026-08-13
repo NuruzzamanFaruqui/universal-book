@@ -6,8 +6,8 @@ import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { BookOpen, Search } from 'lucide-react';
 import MarketingNav from '@/components/MarketingNav';
+import { API_URL } from '@/lib/config';
 
-const API_URL = "https://api.universal-book.com";
 const GENRES = ['All','Fantasy','Sci-Fi','Romance','Thriller','Self-Help','Business','Mystery','Horror','Biography'];
 
 export default function BooksPage() {

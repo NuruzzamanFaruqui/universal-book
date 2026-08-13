@@ -1,6 +1,6 @@
 import { Controller, Post, Get, Body, Param, Request, UseGuards, Headers, Req } from '@nestjs/common';
 import { PaymentsService } from './payments.service';
-import { FirebaseGuard } from '../auth/firebase.guard';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 @Controller('payments')
 export class PaymentsController {
@@ -9,14 +9,14 @@ export class PaymentsController {
   // ─── Credit Balance ───────────────────────────────────────────────────────
 
   @Get('balance')
-  @UseGuards(FirebaseGuard)
+  @UseGuards(JwtAuthGuard)
   async getBalance(@Request() req: any) {
     const balance = await this.paymentsService.getCreditBalance(req.user.id);
     return { balance };
   }
 
   @Get('transactions')
-  @UseGuards(FirebaseGuard)
+  @UseGuards(JwtAuthGuard)
   async getTransactions(@Request() req: any) {
     return this.paymentsService.getCreditTransactions(req.user.id);
   }
@@ -31,7 +31,7 @@ export class PaymentsController {
   // ─── Top-up with Stripe ───────────────────────────────────────────────────
 
   @Post('topup')
-  @UseGuards(FirebaseGuard)
+  @UseGuards(JwtAuthGuard)
   async createTopup(@Request() req: any, @Body() body: { amount: number }) {
     return this.paymentsService.createTopupSession(
       req.user.id,
@@ -43,7 +43,7 @@ export class PaymentsController {
   // ─── Buy Book with Card (Stripe) ──────────────────────────────────────────
 
   @Post('buy-book/card')
-  @UseGuards(FirebaseGuard)
+  @UseGuards(JwtAuthGuard)
   async buyBookWithCard(
     @Request() req: any,
     @Body() body: { bookId: string; affiliateCode?: string },
@@ -59,7 +59,7 @@ export class PaymentsController {
   // ─── Buy Book with Credits ────────────────────────────────────────────────
 
   @Post('buy-book/credits')
-  @UseGuards(FirebaseGuard)
+  @UseGuards(JwtAuthGuard)
   async buyBookWithCredits(
     @Request() req: any,
     @Body() body: { bookId: string; affiliateCode?: string },
@@ -74,7 +74,7 @@ export class PaymentsController {
   // ─── Affiliate Links ──────────────────────────────────────────────────────
 
   @Post('affiliate/link')
-  @UseGuards(FirebaseGuard)
+  @UseGuards(JwtAuthGuard)
   async getAffiliateLink(
     @Request() req: any,
     @Body() body: { bookId: string },
@@ -89,7 +89,7 @@ export class PaymentsController {
   }
 
   @Get('affiliate/stats')
-  @UseGuards(FirebaseGuard)
+  @UseGuards(JwtAuthGuard)
   async getAffiliateStats(@Request() req: any) {
     return this.paymentsService.getAffiliateStats(req.user.id);
   }

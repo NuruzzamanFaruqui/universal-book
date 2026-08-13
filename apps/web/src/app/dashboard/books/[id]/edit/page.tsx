@@ -7,16 +7,10 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, BookOpen, Save } from 'lucide-react';
 import CollaborativeEditor from '@/components/CollaborativeEditor';
+import { getToken as getFreshToken } from '@/lib/auth';
+import { API_URL } from '@/lib/config';
 
-const API_URL = "https://api.universal-book.com";
 
-async function getFreshToken(): Promise<string | null> {
-  try {
-    const { auth } = await import('@/lib/firebase');
-    if (auth?.currentUser) return await auth.currentUser.getIdToken(true);
-  } catch (e) {}
-  return localStorage.getItem('ub_token');
-}
 
 export default function EditChapterPage() {
   const params = useParams();

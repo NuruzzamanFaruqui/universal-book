@@ -6,16 +6,10 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Bell, ArrowLeft, Heart, MessageCircle, Users, BookOpen, UserPlus } from 'lucide-react';
+import { getToken as getFreshToken } from '@/lib/auth';
+import { API_URL } from '@/lib/config';
 
-const API_URL = "https://api.universal-book.com";
 
-async function getFreshToken(): Promise<string | null> {
-  try {
-    const { auth } = await import('@/lib/firebase');
-    if (auth?.currentUser) return await auth.currentUser.getIdToken(true);
-  } catch (e) {}
-  return localStorage.getItem('ub_token');
-}
 
 const notifIcons: any = {
   POST_LIKE: <Heart size={16} className="text-red-400" />,

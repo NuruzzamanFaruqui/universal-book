@@ -5,8 +5,9 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { BookOpen } from 'lucide-react';
+import { API_URL } from '@/lib/config';
+import { login } from '@/lib/auth';
 
-const API_URL = "https://universal-book-api-73444175926.us-central1.run.app";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -20,19 +21,12 @@ export default function LoginPage() {
     setLoading(true);
     setError('');
     try {
-      const { signInWithEmailAndPassword } = await import('firebase/auth');
-      const { auth } = await import('@/lib/firebase');
-      if (!auth) throw new Error('Auth not available');
-      const result = await signInWithEmailAndPassword(auth, email, password);
-      const token = await result.user.getIdToken(true);
-      await fetch(`${API_URL}/api/auth/login`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-      });
-      localStorage.setItem('ub_token', token);
+      await login(email, password);
       router.push('/feed');
     } catch (err: any) {
-      setError('Invalid email or password');
+      // The API distinguishes "wrong credentials" from "you were migrated and
+      // haven't set a password yet" — surfacing its message matters here.
+      setError(err.message || 'Incorrect email or password.');
     } finally {
       setLoading(false);
     }

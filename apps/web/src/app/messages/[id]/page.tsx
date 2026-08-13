@@ -6,18 +6,9 @@ import { useEffect, useState, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Send } from 'lucide-react';
-import { ref, onValue, push, off } from 'firebase/database';
-import { database } from '@/lib/firebase';
-
-const API_URL = "https://api.universal-book.com";
-
-async function getFreshToken(): Promise<string | null> {
-  try {
-    const { auth } = await import('@/lib/firebase');
-    if (auth?.currentUser) return await auth.currentUser.getIdToken(true);
-  } catch (e) {}
-  return localStorage.getItem('ub_token');
-}
+import { subscribeToMessages, ChatMessage } from '@/lib/realtime';
+import { getToken, getStoredToken } from '@/lib/auth';
+import { API_URL, POLL } from '@/lib/config';
 
 export default function ChatPage() {
   const params = useParams();
@@ -33,8 +24,7 @@ export default function ChatPage() {
   const currentUserRef = useRef<any>(null);
 
   useEffect(() => {
-    const token = localStorage.getItem('ub_token');
-    if (!token) { router.push('/auth/login'); return; }
+    if (!getStoredToken()) { router.push('/auth/login'); return; }
     fetchData();
   }, [conversationId]);
 
@@ -42,28 +32,32 @@ export default function ChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Poll for new messages — only those newer than the last one we hold.
   useEffect(() => {
-    if (!database || !currentUser) return;
-    const messagesRef = ref(database, `conversations/${conversationId}/messages`);
-    onValue(messagesRef, (snapshot) => {
-      const data = snapshot.val();
-      if (data) {
-        const firebaseMessages = Object.values(data) as any[];
-        firebaseMessages.sort((a: any, b: any) => a.timestamp - b.timestamp);
-        setMessages(prev => {
-          const prevIds = new Set(prev.map((m: any) => m.id));
-          const newMsgs = firebaseMessages.filter((m: any) => !prevIds.has(m.id));
-          if (newMsgs.length === 0) return prev;
-          return [...prev, ...newMsgs];
+    if (!currentUser || messages.length === 0 && loading) return;
+
+    const latest = messages.length ? messages[messages.length - 1].createdAt : undefined;
+    const unsubscribe = subscribeToMessages(
+      conversationId,
+      (incoming: ChatMessage[]) => {
+        setMessages((prev) => {
+          const seen = new Set(prev.map((m: any) => m.id));
+          const fresh = incoming.filter((m) => !seen.has(m.id));
+          return fresh.length ? [...prev, ...fresh] : prev;
         });
-      }
-    });
-    return () => off(messagesRef);
-  }, [conversationId, currentUser]);
+      },
+      POLL.messages,
+      latest,
+    );
+    return unsubscribe;
+    // Re-subscribing on every message would reset the poll clock, so this
+    // deliberately keys only on the conversation and who we are.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversationId, currentUser, loading]);
 
   const fetchData = async () => {
     try {
-      const token = await getFreshToken();
+      const token = await getToken();
       const userRes = await fetch(`${API_URL}/api/users/me`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -94,24 +88,17 @@ export default function ChatPage() {
     if (!message.trim() || !currentUser) return;
     setSending(true);
     try {
-      const token = await getFreshToken();
+      const token = await getToken();
       const res = await fetch(`${API_URL}/api/social/conversations/${conversationId}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ content: message }),
       });
       if (res.ok) {
+        // Append locally for instant feedback; the poll dedupes by id, so this
+        // won't show twice when the next round returns the same message.
         const newMsg = await res.json();
         setMessages(prev => [...prev, newMsg]);
-        if (database) {
-          const messagesRef = ref(database, `conversations/${conversationId}/messages`);
-          push(messagesRef, {
-            id: newMsg.id,
-            senderId: currentUser.id,
-            content: message,
-            timestamp: Date.now(),
-          });
-        }
         setMessage('');
       }
     } catch (e) {}

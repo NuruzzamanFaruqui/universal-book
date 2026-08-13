@@ -5,8 +5,9 @@ export const dynamic = 'force-dynamic';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { BookOpen, Search, Star, TrendingUp, ArrowRight, ChevronRight, LogOut, User, Bell, PenSquare } from 'lucide-react';
+import { getToken as getFreshToken, logout, onAuthChange } from '@/lib/auth';
+import { API_URL } from '@/lib/config';
 
-const API_URL = "https://api.universal-book.com";
 
 const GENRES = [
   { name: 'Self-Help', emoji: '🌱', color: 'from-green-900 to-green-800' },
@@ -31,13 +32,6 @@ const GENRES = [
   { name: 'Literary Fiction', emoji: '📖', color: 'from-stone-900 to-stone-800' },
 ];
 
-async function getFreshToken(): Promise<string | null> {
-  try {
-    const { auth } = await import('@/lib/firebase');
-    if (auth?.currentUser) return await auth.currentUser.getIdToken(true);
-  } catch (e) {}
-  return localStorage.getItem('ub_token');
-}
 
 export default function MarketplacePage() {
   const [search, setSearch] = useState('');
@@ -52,32 +46,26 @@ export default function MarketplacePage() {
         fetchMarketplace();
         const setupAuth = async () => {
           try {
-            const { auth } = await import('@/lib/firebase');
-            if (!auth) return;
-            const { onAuthStateChanged } = await import('firebase/auth');
-            onAuthStateChanged(auth, async (firebaseUser) => {
-              if (firebaseUser) {
-                setIsLoggedIn(true);
-                const token = await firebaseUser.getIdToken();
-                localStorage.setItem('ub_token', token);
-                const res = await fetch(`${API_URL}/api/users/me`, {
-                  headers: { 'Authorization': `Bearer ${token}` }
-                });
-                if (res.ok) {
-                  const data = await res.json();
-                  setUser(data);
-                }
-              } else {
-                setIsLoggedIn(false);
-                setUser(null);
-              }
-              setUserLoading(false);
+            const token = await getFreshToken();
+            if (!token) {
+              setIsLoggedIn(false);
+              setUser(null);
+              return;
+            }
+            setIsLoggedIn(true);
+            const res = await fetch(`${API_URL}/api/users/me`, {
+              headers: { 'Authorization': `Bearer ${token}` }
             });
+            if (res.ok) setUser(await res.json());
           } catch (e) {
+            /* fall through */
+          } finally {
             setUserLoading(false);
           }
         };
         setupAuth();
+        const unsubscribeAuth = onAuthChange(setupAuth);
+        return () => unsubscribeAuth();
       }, []);
 
   const fetchUser = async () => {
@@ -121,11 +109,7 @@ export default function MarketplacePage() {
   };
 
   const handleLogout = async () => {
-    try {
-      const { auth } = await import('@/lib/firebase');
-      if (auth) { const { signOut } = await import('firebase/auth'); await signOut(auth); }
-    } catch (e) {}
-    localStorage.removeItem('ub_token');
+    await logout();
     setIsLoggedIn(false);
     setUser(null);
   };

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 
 @Injectable()
@@ -297,21 +297,82 @@ export class SocialService {
     });
   }
 
+  /**
+   * Throws unless `userId` is one of the two participants. Every conversation
+   * read or write goes through this — without it, any authenticated user could
+   * read or post into a private thread by id alone.
+   */
+  private async assertParticipant(conversationId: string, userId: string) {
+    const conversation = await this.prisma.conversation.findUnique({
+      where: { id: conversationId },
+      select: { id: true, user1Id: true, user2Id: true },
+    });
+    if (!conversation) throw new NotFoundException('Conversation not found');
+    if (conversation.user1Id !== userId && conversation.user2Id !== userId) {
+      throw new ForbiddenException('You are not a participant in this conversation');
+    }
+    return conversation;
+  }
+
   async sendDirectMessage(conversationId: string, senderId: string, content: string) {
+    await this.assertParticipant(conversationId, senderId);
+
     const message = await this.prisma.directMessage.create({
       data: { conversationId, senderId, content },
       include: { sender: { select: { id: true, name: true, avatarUrl: true, profilePhoto: true } } },
     });
     await this.prisma.conversation.update({ where: { id: conversationId }, data: { updatedAt: new Date() } });
+
+    // Replaces the RTDB fan-out: the recipient's poll picks this up, and the
+    // notification drives the unread badge when they aren't on the thread.
+    const conversation = await this.prisma.conversation.findUnique({
+      where: { id: conversationId },
+      select: { user1Id: true, user2Id: true },
+    });
+    const recipientId =
+      conversation!.user1Id === senderId ? conversation!.user2Id : conversation!.user1Id;
+    await this.prisma.notification.create({
+      data: {
+        userId: recipientId,
+        type: 'DIRECT_MESSAGE',
+        message: 'sent you a message',
+        linkId: conversationId,
+      },
+    });
+
     return message;
   }
 
-  async getConversationMessages(conversationId: string) {
-    return this.prisma.directMessage.findMany({
-      where: { conversationId },
+  /**
+   * `since` makes this pollable: pass the timestamp of the newest message you
+   * already hold and only newer ones come back.
+   */
+  async getConversationMessages(conversationId: string, userId: string, since?: string) {
+    await this.assertParticipant(conversationId, userId);
+
+    const sinceDate = since ? new Date(since) : null;
+    const validSince = sinceDate && !isNaN(sinceDate.getTime()) ? sinceDate : null;
+
+    const messages = await this.prisma.directMessage.findMany({
+      where: {
+        conversationId,
+        ...(validSince ? { createdAt: { gt: validSince } } : {}),
+      },
       include: { sender: { select: { id: true, name: true, avatarUrl: true, profilePhoto: true } } },
       orderBy: { createdAt: 'asc' },
+      // Unbounded on a first load, but a poll only ever returns the delta.
+      take: validSince ? 200 : 500,
     });
+
+    // Mark the other side's messages read now that they've been delivered.
+    if (messages.length) {
+      await this.prisma.directMessage.updateMany({
+        where: { conversationId, senderId: { not: userId }, isRead: false },
+        data: { isRead: true },
+      });
+    }
+
+    return messages;
   }
 
   async getSuggestedUsers(userId: string) {

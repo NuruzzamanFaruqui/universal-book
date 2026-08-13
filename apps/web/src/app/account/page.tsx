@@ -6,17 +6,11 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { BookOpen, ArrowLeft, User, Mail, Save, Zap, Shield } from 'lucide-react';
+import { fetchMe, getToken as getFreshToken } from '@/lib/auth';
+import { API_URL } from '@/lib/config';
 
-const API_URL = "https://api.universal-book.com";
 const ADMIN_EMAILS = ['faruqui.swe@diu.edu.bd', 'levin.kuhlmann@monash.edu'];
 
-async function getFreshToken(): Promise<string | null> {
-  try {
-    const { auth } = await import('@/lib/firebase');
-    if (auth?.currentUser) return await auth.currentUser.getIdToken(true);
-  } catch (e) {}
-  return localStorage.getItem('ub_token');
-}
 
 export default function AccountPage() {
   const router = useRouter();
@@ -37,16 +31,11 @@ export default function AccountPage() {
 
   const checkAdminStatus = async () => {
     try {
-      const { auth } = await import('@/lib/firebase');
-      if (!auth) return;
-      const { onAuthStateChanged } = await import('firebase/auth');
-      const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-        if (firebaseUser?.email) {
-          const email = firebaseUser.email.toLowerCase().trim();
-          setIsAdmin(ADMIN_EMAILS.some(a => a.toLowerCase() === email));
-        }
-        unsubscribe();
-      });
+      const me = await fetchMe();
+      if (me?.email) {
+        const email = me.email.toLowerCase().trim();
+        setIsAdmin(ADMIN_EMAILS.some(a => a.toLowerCase() === email));
+      }
     } catch (e) {}
   };
 

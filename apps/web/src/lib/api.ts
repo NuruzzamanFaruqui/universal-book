@@ -1,22 +1,22 @@
 import axios from 'axios';
-
-const API_URL = "https://api.universal-book.com";
+import { API_URL } from './config';
+import { getToken } from './auth';
 
 const api = axios.create({
   baseURL: API_URL,
 });
 
+/**
+ * Attaches the bearer token, refreshing it first if it has expired.
+ *
+ * getToken() reads from storage synchronously and only awaits when a refresh is
+ * genuinely due, so there is no window during startup where a request goes out
+ * unauthenticated.
+ */
 api.interceptors.request.use(async (config) => {
   if (typeof window === 'undefined') return config;
-  try {
-    const { auth } = await import('@/lib/firebase');
-    if (!auth) return config;
-    const user = auth.currentUser;
-    if (user) {
-      const token = await user.getIdToken();
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-  } catch (e) {}
+  const token = await getToken();
+  if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
 

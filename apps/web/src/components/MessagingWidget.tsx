@@ -2,18 +2,9 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { MessageCircle, X, Send, ChevronDown, Edit, Minus } from 'lucide-react';
-import { ref, onValue, push, off, set, onDisconnect } from 'firebase/database';
-import { database } from '@/lib/firebase';
-
-const API_URL = "https://api.universal-book.com";
-
-async function getFreshToken(): Promise<string | null> {
-  try {
-    const { auth } = await import('@/lib/firebase');
-    if (auth?.currentUser) return await auth.currentUser.getIdToken(true);
-  } catch (e) {}
-  return null;
-}
+import { getToken, onAuthChange, getStoredToken } from '@/lib/auth';
+import { subscribeToMessages, subscribeToPresence, ChatMessage, Unsubscribe } from '@/lib/realtime';
+import { API_URL, POLL } from '@/lib/config';
 
 export default function MessagingWidget() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -27,73 +18,87 @@ export default function MessagingWidget() {
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
   const [onlineLoaded, setOnlineLoaded] = useState(false);
   const messagesEndRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  // Mirrors `messages` so the polling effect can read the newest timestamp
+  // without taking `messages` as a dependency and restarting on every arrival.
+  const messagesRef = useRef<Record<string, any[]>>({});
+  useEffect(() => { messagesRef.current = messages; }, [messages]);
 
-  // Listen to Firebase auth state — reacts to login/logout without reload
+  // Track sign-in state so the widget reacts to login/logout without a reload.
   useEffect(() => {
-    let unsubscribe: (() => void) | null = null;
-
-    const setupAuthListener = async () => {
-      try {
-        const { auth } = await import('@/lib/firebase');
-        if (!auth) return;
-        const { onAuthStateChanged } = await import('firebase/auth');
-        unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-          if (firebaseUser) {
-            setIsLoggedIn(true);
-            fetchCurrentUser();
-          } else {
-            // Logged out — clear everything
-            setIsLoggedIn(false);
-            setCurrentUser(null);
-            setOpenChats([]);
-            setMessages({});
-            setConversations([]);
-            setIsOpen(false);
-            setMinimizedChats(new Set());
-          }
-        });
-      } catch (e) {}
+    const sync = () => {
+      if (getStoredToken()) {
+        setIsLoggedIn(true);
+        fetchCurrentUser();
+      } else {
+        setIsLoggedIn(false);
+        setCurrentUser(null);
+        setOpenChats([]);
+        setMessages({});
+        setConversations([]);
+        setIsOpen(false);
+        setMinimizedChats(new Set());
+      }
     };
-
-    setupAuthListener();
-    return () => { if (unsubscribe) unsubscribe(); };
+    sync();
+    return onAuthChange(sync);
   }, []);
 
   useEffect(() => {
     if (!currentUser) return;
     fetchConversations();
-    if (database) {
-const onlineRef = ref(database, `online/${currentUser.id}`);
 
-onDisconnect(onlineRef).remove();
-set(onlineRef, { name: currentUser.name, lastSeen: Date.now() });
-      const allOnlineRef = ref(database, 'online');
-      onValue(allOnlineRef, (snapshot) => {
-        setOnlineLoaded(true);
-        const data = snapshot.val();
-        setOnlineUsers(data ? new Set(Object.keys(data)) : new Set());
-      });
-    }
+    // Refresh the conversation list so unread counts and ordering stay live.
+    const convTimer = setInterval(fetchConversations, POLL.conversations);
+    return () => clearInterval(convTimer);
   }, [currentUser]);
 
+  // Online indicators. AuthProvider owns the heartbeat; this only reads.
   useEffect(() => {
-    openChats.forEach(chat => {
-      if (!database) return;
-      const messagesRef = ref(database, `conversations/${chat.id}/messages`);
-      onValue(messagesRef, (snapshot) => {
-        const data = snapshot.val();
-        if (data) {
-          const msgs = (Object.values(data) as any[]).sort((a: any, b: any) => a.timestamp - b.timestamp);
-          setMessages(prev => {
-            const prevIds = new Set((prev[chat.id] || []).map((m: any) => m.id));
-            const newMsgs = msgs.filter((m: any) => !prevIds.has(m.id));
-            if (newMsgs.length === 0) return prev;
-            return { ...prev, [chat.id]: [...(prev[chat.id] || []), ...newMsgs] };
+    if (!currentUser) return;
+
+    const peerIds = () =>
+      conversations
+        .map((c) => (c.user1?.id === currentUser.id ? c.user2?.id : c.user1?.id))
+        .filter(Boolean);
+
+    return subscribeToPresence(
+      peerIds,
+      (online) => {
+        setOnlineLoaded(true);
+        setOnlineUsers(new Set(Object.keys(online).filter((id) => online[id])));
+      },
+      POLL.presence,
+    );
+  }, [currentUser, conversations]);
+
+  // One message poll per open chat window.
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const subs: Unsubscribe[] = openChats.map((chat) => {
+      const existing = messagesRef.current[chat.id] || [];
+      const latest = existing.length ? existing[existing.length - 1].createdAt : undefined;
+
+      return subscribeToMessages(
+        chat.id,
+        (incoming: ChatMessage[]) => {
+          setMessages((prev) => {
+            const seen = new Set((prev[chat.id] || []).map((m: any) => m.id));
+            const fresh = incoming.filter((m) => !seen.has(m.id));
+            if (!fresh.length) return prev;
+            return { ...prev, [chat.id]: [...(prev[chat.id] || []), ...fresh] };
           });
-        }
-      });
+        },
+        POLL.messages,
+        latest,
+      );
     });
-  }, [openChats]);
+
+    return () => subs.forEach((stop) => stop());
+    // Keyed on which chats are open, not their contents — re-subscribing on
+    // every incoming message would reset each poll clock.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openChats.map((c) => c.id).join(','), currentUser]);
 
   useEffect(() => {
     openChats.forEach(chat => {
@@ -105,7 +110,7 @@ set(onlineRef, { name: currentUser.name, lastSeen: Date.now() });
 
   const fetchCurrentUser = async () => {
     try {
-      const token = await getFreshToken();
+      const token = await getToken();
       if (!token) return;
       const res = await fetch(`${API_URL}/api/users/me`, { headers: { 'Authorization': `Bearer ${token}` } });
       if (res.ok) setCurrentUser(await res.json());
@@ -114,7 +119,7 @@ set(onlineRef, { name: currentUser.name, lastSeen: Date.now() });
 
   const fetchConversations = async () => {
     try {
-      const token = await getFreshToken();
+      const token = await getToken();
       if (!token) return;
       const res = await fetch(`${API_URL}/api/social/conversations`, { headers: { 'Authorization': `Bearer ${token}` } });
       if (res.ok) setConversations(await res.json());
@@ -128,7 +133,7 @@ set(onlineRef, { name: currentUser.name, lastSeen: Date.now() });
     }
     setOpenChats(prev => [...prev.slice(-2), conv]);
     try {
-      const token = await getFreshToken();
+      const token = await getToken();
       if (!token) return;
       const res = await fetch(`${API_URL}/api/social/conversations/${conv.id}/messages`, {
         headers: { 'Authorization': `Bearer ${token}` }
@@ -155,7 +160,7 @@ set(onlineRef, { name: currentUser.name, lastSeen: Date.now() });
     const text = messageText[convId];
     if (!text?.trim() || !currentUser) return;
     try {
-      const token = await getFreshToken();
+      const token = await getToken();
       if (!token) return;
       const res = await fetch(`${API_URL}/api/social/conversations/${convId}/messages`, {
         method: 'POST',
@@ -164,12 +169,8 @@ set(onlineRef, { name: currentUser.name, lastSeen: Date.now() });
       });
       if (res.ok) {
         const newMsg = await res.json();
+        // Optimistic append; the poll dedupes by id so it won't double up.
         setMessages(prev => ({ ...prev, [convId]: [...(prev[convId] || []), newMsg] }));
-        if (database) {
-          push(ref(database, `conversations/${convId}/messages`), {
-            id: newMsg.id, senderId: currentUser.id, content: text, timestamp: Date.now(),
-          });
-        }
         setMessageText(prev => ({ ...prev, [convId]: '' }));
       }
     } catch (e) {}

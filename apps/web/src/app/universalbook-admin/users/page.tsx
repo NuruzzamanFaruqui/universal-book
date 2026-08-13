@@ -3,16 +3,10 @@ export const dynamic = 'force-dynamic';
 
 import { useEffect, useState } from 'react';
 import { Search, RefreshCw, Users, BookOpen } from 'lucide-react';
+import { getToken as getFreshToken } from '@/lib/auth';
+import { API_URL } from '@/lib/config';
 
-const API_URL = "https://api.universal-book.com";
 
-async function getFreshToken(): Promise<string | null> {
-  try {
-    const { auth } = await import('@/lib/firebase');
-    if (auth?.currentUser) return await auth.currentUser.getIdToken(true);
-  } catch (e) {}
-  return localStorage.getItem('ub_token');
-}
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<any[]>([]);

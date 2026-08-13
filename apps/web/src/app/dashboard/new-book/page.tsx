@@ -6,16 +6,10 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { BookOpen, ArrowLeft, ArrowRight, Sparkles, PenSquare, Upload, Check, Loader, Wallet, AlertCircle } from 'lucide-react';
+import { getToken as getFreshToken } from '@/lib/auth';
+import { API_URL } from '@/lib/config';
 
-const API_URL = "https://api.universal-book.com";
 
-async function getFreshToken(): Promise<string | null> {
-  try {
-    const { auth } = await import('@/lib/firebase');
-    if (auth?.currentUser) return await auth.currentUser.getIdToken(true);
-  } catch (e) {}
-  return localStorage.getItem('ub_token');
-}
 
 const GENRES = ['Fantasy','Sci-Fi','Romance','Thriller','Self-Help','Business','Mystery','Horror','Biography','Literary Fiction','History','Science','Philosophy','Psychology','Education','Technology','Health','Travel','Cooking','Poetry'];
 const TONES = ['Academic & Formal','Conversational','Inspirational','Dramatic','Humorous','Dark & Gritty','Engaging & Accessible','Technical','Narrative','Poetic'];

@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic';
 import { useState } from 'react';
 import Link from 'next/link';
 import { BookOpen, ArrowLeft, Mail } from 'lucide-react';
+import { requestPasswordReset } from '@/lib/auth';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
@@ -16,13 +17,12 @@ export default function ForgotPasswordPage() {
     setLoading(true);
     setError('');
     try {
-      const { sendPasswordResetEmail } = await import('firebase/auth');
-      const { auth } = await import('@/lib/firebase');
-      if (!auth) throw new Error('Auth not available');
-      await sendPasswordResetEmail(auth, email);
+      // Always succeeds for a well-formed address — the API deliberately does
+      // not reveal whether an account exists.
+      await requestPasswordReset(email);
       setSuccess(true);
     } catch (err: any) {
-      setError('Failed to send reset email. Please check your email address.');
+      setError(err.message || 'Could not send the reset email. Try again.');
     } finally {
       setLoading(false);
     }

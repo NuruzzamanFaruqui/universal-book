@@ -11,16 +11,10 @@ import {
 } from 'lucide-react';
 import AppNav from '@/components/AppNav';
 import BottomTabBar from '@/components/BottomTabBar';
+import { getToken as getFreshToken } from '@/lib/auth';
+import { API_URL } from '@/lib/config';
 
-const API_URL = 'https://api.universal-book.com';
 
-async function getFreshToken(): Promise<string | null> {
-  try {
-    const { auth } = await import('@/lib/firebase');
-    if (auth?.currentUser) return await auth.currentUser.getIdToken(true);
-  } catch (e) {}
-  return null;
-}
 
 export default function FeedPage() {
   const router = useRouter();
@@ -37,21 +31,16 @@ export default function FeedPage() {
 
   const initAuth = async () => {
     try {
-      const { auth } = await import('@/lib/firebase');
-      if (!auth) { router.push('/auth/login'); return; }
-      const { onAuthStateChanged } = await import('firebase/auth');
-      onAuthStateChanged(auth, async (firebaseUser) => {
-        if (!firebaseUser) { router.push('/auth/login'); return; }
-        const token = await firebaseUser.getIdToken();
-        localStorage.setItem('ub_token', token);
-        const [userRes, balRes] = await Promise.all([
-          fetch(`${API_URL}/api/users/me`, { headers: { Authorization: `Bearer ${token}` } }),
-          fetch(`${API_URL}/api/payments/balance`, { headers: { Authorization: `Bearer ${token}` } }),
-        ]);
-        if (userRes.ok) setUser(await userRes.json());
-        if (balRes.ok) setCreditBalance((await balRes.json()).balance);
-        setLoading(false);
-      });
+      const token = await getFreshToken();
+      if (!token) { router.push('/auth/login'); return; }
+      const [userRes, balRes] = await Promise.all([
+        fetch(`${API_URL}/api/users/me`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${API_URL}/api/payments/balance`, { headers: { Authorization: `Bearer ${token}` } }),
+      ]);
+      if (userRes.ok) setUser(await userRes.json());
+      else { router.push('/auth/login'); return; }
+      if (balRes.ok) setCreditBalance((await balRes.json()).balance);
+      setLoading(false);
     } catch (e) { setLoading(false); }
   };
 

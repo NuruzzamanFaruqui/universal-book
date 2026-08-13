@@ -1,9 +1,9 @@
 import { Controller, Get, Post, Delete, Body, Param, Request, UseGuards } from '@nestjs/common';
 import { AuthorGroupsService } from './author-groups.service';
-import { FirebaseGuard } from '../auth/firebase.guard';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 @Controller('author-groups')
-@UseGuards(FirebaseGuard)
+@UseGuards(JwtAuthGuard)
 export class AuthorGroupsController {
   constructor(private readonly authorGroupsService: AuthorGroupsService) {}
 

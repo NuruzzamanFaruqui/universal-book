@@ -1,13 +1,13 @@
 import {
   Controller, Get, Post, Put, Delete,
-  Body, Param, Request, UseGuards,
+  Body, Param, Query, Request, UseGuards,
 } from '@nestjs/common';
 import { BooksService } from './books.service';
-import { FirebaseGuard } from '../auth/firebase.guard';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AiService } from '../ai/ai.service';
 
 @Controller('books')
-@UseGuards(FirebaseGuard)
+@UseGuards(JwtAuthGuard)
 export class BooksController {
   constructor(
     private readonly booksService: BooksService,
@@ -71,6 +71,24 @@ export class BooksController {
     @Request() req: any,
   ) {
     return this.booksService.updateChapterContent(bookId, chapterId, req.user.id, body.content);
+  }
+
+  // ─── Collaborative editing ────────────────────────────────────────────────
+
+  /** Heartbeat + delta poll for the editor. See BooksService.syncChapter. */
+  @Get(':bookId/chapters/:chapterId/sync')
+  async syncChapter(
+    @Param('bookId') bookId: string,
+    @Param('chapterId') chapterId: string,
+    @Request() req: any,
+    @Query('since') since?: string,
+  ) {
+    return this.booksService.syncChapter(bookId, chapterId, req.user.id, since);
+  }
+
+  @Delete(':bookId/chapters/:chapterId/presence')
+  async leaveChapter(@Param('chapterId') chapterId: string, @Request() req: any) {
+    return this.booksService.leaveChapter(chapterId, req.user.id);
   }
 
   @Delete(':id')

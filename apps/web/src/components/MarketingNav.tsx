@@ -3,6 +3,8 @@ import { useEffect, useState, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { BookOpen, ChevronDown, LogOut, Settings, LayoutDashboard } from 'lucide-react';
+import { getToken, logout, onAuthChange } from '@/lib/auth';
+import { API_URL } from '@/lib/config';
 
 export default function MarketingNav() {
   const router = useRouter();
@@ -15,27 +17,26 @@ export default function MarketingNav() {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const { auth } = await import('@/lib/firebase');
-        if (!auth) { setChecked(true); return; }
-        const { onAuthStateChanged } = await import('firebase/auth');
-        onAuthStateChanged(auth, async (firebaseUser) => {
-          if (firebaseUser) {
-            setIsLoggedIn(true);
-            const token = await firebaseUser.getIdToken();
-            localStorage.setItem('ub_token', token);
-            const res = await fetch('https://api.universal-book.com/api/users/me', {
-              headers: { Authorization: `Bearer ${token}` },
-            });
-            if (res.ok) setUser(await res.json());
-          } else {
-            setIsLoggedIn(false);
-            setUser(null);
-          }
+        const token = await getToken();
+        if (!token) {
+          setIsLoggedIn(false);
+          setUser(null);
           setChecked(true);
+          return;
+        }
+        setIsLoggedIn(true);
+        const res = await fetch(`${API_URL}/api/users/me`, {
+          headers: { Authorization: `Bearer ${token}` },
         });
-      } catch (e) { setChecked(true); }
+        if (res.ok) setUser(await res.json());
+      } catch (e) {
+        /* fall through to checked */
+      } finally {
+        setChecked(true);
+      }
     };
     checkAuth();
+    const unsubscribeAuth = onAuthChange(checkAuth);
 
     const handleClick = (e: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
@@ -43,15 +44,14 @@ export default function MarketingNav() {
       }
     };
     document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
+    return () => {
+      unsubscribeAuth();
+      document.removeEventListener('mousedown', handleClick);
+    };
   }, []);
 
   const handleLogout = async () => {
-    try {
-      const { auth } = await import('@/lib/firebase');
-      if (auth) await auth.signOut();
-    } catch (e) {}
-    localStorage.removeItem('ub_token');
+    await logout();
     setIsLoggedIn(false);
     setUser(null);
     setShowDropdown(false);

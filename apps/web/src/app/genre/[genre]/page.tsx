@@ -6,8 +6,8 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { BookOpen, ArrowLeft } from 'lucide-react';
+import { API_URL } from '@/lib/config';
 
-const API_URL = "https://api.universal-book.com";
 
 export default function GenrePage() {
   const params = useParams();

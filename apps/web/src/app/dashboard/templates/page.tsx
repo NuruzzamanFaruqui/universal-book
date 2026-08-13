@@ -6,8 +6,9 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { BookOpen, ArrowRight } from 'lucide-react';
 import AppNav from '@/components/AppNav';
+import { getToken as getFreshToken } from '@/lib/auth';
+import { API_URL } from '@/lib/config';
 
-const API_URL = "https://api.universal-book.com";
 
 const templates = [
   {
@@ -78,13 +79,6 @@ const colorMap: any = {
   indigo: 'bg-indigo-900/30 border-indigo-700 text-indigo-400',
 };
 
-async function getFreshToken(): Promise<string | null> {
-  try {
-    const { auth } = await import('@/lib/firebase');
-    if (auth?.currentUser) return await auth.currentUser.getIdToken(true);
-  } catch (e) {}
-  return localStorage.getItem('ub_token');
-}
 
 export default function TemplatesPage() {
   const router = useRouter();

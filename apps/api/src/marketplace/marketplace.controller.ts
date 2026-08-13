@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Body, Param, Query, Request, UseGuards } from '@nestjs/common';
 import { MarketplaceService } from './marketplace.service';
-import { FirebaseGuard, OptionalFirebaseGuard } from '../auth/firebase.guard';
+import { JwtAuthGuard, OptionalJwtAuthGuard } from '../auth/jwt-auth.guard';
 
 @Controller('marketplace')
 export class MarketplaceController {
@@ -24,13 +24,13 @@ export class MarketplaceController {
   async getTopWriters() { return this.marketplaceService.getTopWriters(); }
 
   @Get('library')
-  @UseGuards(FirebaseGuard)
+  @UseGuards(JwtAuthGuard)
   async getLibrary(@Request() req: any) {
     return this.marketplaceService.getUserLibrary(req.user.id);
   }
 
   @Get('books/:bookId')
-  @UseGuards(OptionalFirebaseGuard)
+  @UseGuards(OptionalJwtAuthGuard)
   async getBook(@Param('bookId') bookId: string, @Request() req: any) {
     const userId = req.user?.id;
     const book = await this.marketplaceService.getPublishedBookById(bookId, userId);
@@ -44,31 +44,31 @@ export class MarketplaceController {
   }
 
   @Post('books/:bookId/publish')
-  @UseGuards(FirebaseGuard)
+  @UseGuards(JwtAuthGuard)
   async publishBook(@Param('bookId') bookId: string, @Body() body: { price: number }, @Request() req: any) {
     return this.marketplaceService.publishBook(bookId, req.user.id, body.price);
   }
 
   @Post('books/:bookId/unpublish')
-  @UseGuards(FirebaseGuard)
+  @UseGuards(JwtAuthGuard)
   async unpublishBook(@Param('bookId') bookId: string, @Request() req: any) {
     return this.marketplaceService.unpublishBook(bookId, req.user.id);
   }
 
   @Post('books/:bookId/review')
-  @UseGuards(FirebaseGuard)
+  @UseGuards(JwtAuthGuard)
   async addReview(@Param('bookId') bookId: string, @Body() body: { rating: number; comment: string }, @Request() req: any) {
     return this.marketplaceService.addReview(bookId, req.user.id, body.rating, body.comment);
   }
 
   @Post('books/:bookId/follow')
-  @UseGuards(FirebaseGuard)
+  @UseGuards(JwtAuthGuard)
   async followBook(@Param('bookId') bookId: string, @Request() req: any) {
     return this.marketplaceService.followBook(req.user.id, bookId);
   }
 
   @Post('writers/:writerId/follow')
-  @UseGuards(FirebaseGuard)
+  @UseGuards(JwtAuthGuard)
   async followWriter(@Param('writerId') writerId: string, @Request() req: any) {
     return this.marketplaceService.followWriter(req.user.id, writerId);
   }

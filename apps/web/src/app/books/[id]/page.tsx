@@ -6,16 +6,10 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { BookOpen, Star, ArrowLeft, Heart, Share2, CheckCircle, Wallet, CreditCard, ChevronDown, ChevronUp } from 'lucide-react';
 import MarketingNav from '@/components/MarketingNav';
+import { getToken as getFreshToken } from '@/lib/auth';
+import { API_URL } from '@/lib/config';
 
-const API_URL = 'https://api.universal-book.com';
 
-async function getFreshToken(): Promise<string | null> {
-  try {
-    const { auth } = await import('@/lib/firebase');
-    if (auth?.currentUser) return await auth.currentUser.getIdToken(true);
-  } catch (e) {}
-  return null;
-}
 
 export default function PublicBookPage() {
   const params = useParams();
@@ -53,36 +47,25 @@ export default function PublicBookPage() {
       if (stored) setAffiliateCode(stored);
     }
 
-    // Auth check using onAuthStateChanged — the only reliable method
     const initAuth = async () => {
       try {
-        const { auth } = await import('@/lib/firebase');
-        if (!auth) { setAuthChecked(true); return; }
-        const { onAuthStateChanged } = await import('firebase/auth');
-        onAuthStateChanged(auth, async (firebaseUser) => {
-          if (firebaseUser) {
-            setIsLoggedIn(true);
-            const token = await firebaseUser.getIdToken();
-            localStorage.setItem('ub_token', token);
-            // Fetch credit balance
-            const balRes = await fetch(`${API_URL}/api/payments/balance`, {
-              headers: { Authorization: `Bearer ${token}` },
-            });
-            if (balRes.ok) setCreditBalance((await balRes.json()).balance);
-            // Check library
-            const libRes = await fetch(`${API_URL}/api/marketplace/library`, {
-              headers: { Authorization: `Bearer ${token}` },
-            });
-            if (libRes.ok) {
-              const lib = await libRes.json();
-              const owned = lib.some((p: any) => p.publishedBook?.bookId === bookId || p.bookId === bookId);
-              setAlreadyOwned(owned);
-            }
-          } else {
-            setIsLoggedIn(false);
-          }
+        const token = await getFreshToken();
+        if (!token) {
+          setIsLoggedIn(false);
           setAuthChecked(true);
-        });
+          return;
+        }
+        setIsLoggedIn(true);
+        const [balRes, libRes] = await Promise.all([
+          fetch(`${API_URL}/api/payments/balance`, { headers: { Authorization: `Bearer ${token}` } }),
+          fetch(`${API_URL}/api/marketplace/library`, { headers: { Authorization: `Bearer ${token}` } }),
+        ]);
+        if (balRes.ok) setCreditBalance((await balRes.json()).balance);
+        if (libRes.ok) {
+          const lib = await libRes.json();
+          setAlreadyOwned(lib.some((p: any) => p.publishedBook?.bookId === bookId || p.bookId === bookId));
+        }
+        setAuthChecked(true);
       } catch (e) {
         setAuthChecked(true);
       }

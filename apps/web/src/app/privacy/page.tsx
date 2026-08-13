@@ -34,7 +34,7 @@ export default function PrivacyPage() {
           </section>
           <section>
             <h2 className="text-xl font-bold text-white mb-3">6. Third-Party Services</h2>
-            <p>We use Firebase (authentication), Stripe (payments), and Anthropic (AI generation). Each has their own privacy policy.</p>
+            <p>We use Stripe (payments) and Anthropic (AI generation). Each has their own privacy policy. Authentication and all account data are handled on our own servers.</p>
           </section>
           <section>
             <h2 className="text-xl font-bold text-white mb-3">7. Data Retention</h2>

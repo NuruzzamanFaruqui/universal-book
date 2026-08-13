@@ -1,9 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Home, BookOpen, PlusCircle, LayoutDashboard, User, X, Sparkles, PenSquare, Upload, FileEdit } from 'lucide-react';
+import { getToken, logout } from '@/lib/auth';
+import { API_URL } from '@/lib/config';
 
 export default function BottomTabBar() {
   const pathname = usePathname();
@@ -183,29 +185,24 @@ function MeSheetContent({ onClose }: { onClose: () => void }) {
   const [user, setUser] = useState<any>(null);
   const [creditBalance, setCreditBalance] = useState<number | null>(null);
 
-  useState(() => {
+  useEffect(() => {
     const init = async () => {
       try {
-        const { auth } = await import('@/lib/firebase');
-        if (!auth?.currentUser) return;
-        const token = await auth.currentUser.getIdToken();
+        const token = await getToken();
+        if (!token) return;
         const [userRes, balRes] = await Promise.all([
-          fetch('https://api.universal-book.com/api/users/me', { headers: { Authorization: `Bearer ${token}` } }),
-          fetch('https://api.universal-book.com/api/payments/balance', { headers: { Authorization: `Bearer ${token}` } }),
+          fetch(`${API_URL}/api/users/me`, { headers: { Authorization: `Bearer ${token}` } }),
+          fetch(`${API_URL}/api/payments/balance`, { headers: { Authorization: `Bearer ${token}` } }),
         ]);
         if (userRes.ok) setUser(await userRes.json());
         if (balRes.ok) setCreditBalance((await balRes.json()).balance);
       } catch (e) {}
     };
     init();
-  });
+  }, []);
 
   const handleLogout = async () => {
-    try {
-      const { auth } = await import('@/lib/firebase');
-      if (auth) await auth.signOut();
-    } catch (e) {}
-    localStorage.removeItem('ub_token');
+    await logout();
     onClose();
     router.push('/auth/login');
   };

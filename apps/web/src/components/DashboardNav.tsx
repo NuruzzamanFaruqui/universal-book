@@ -4,16 +4,10 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { BookOpen, Wallet } from 'lucide-react';
+import { getToken as getFreshToken, logout } from '@/lib/auth';
+import { API_URL } from '@/lib/config';
 
-const API_URL = 'https://api.universal-book.com';
 
-async function getFreshToken(): Promise<string | null> {
-  try {
-    const { auth } = await import('@/lib/firebase');
-    if (auth?.currentUser) return await auth.currentUser.getIdToken(true);
-  } catch (e) {}
-  return null;
-}
 
 export default function DashboardNav() {
   const router = useRouter();
@@ -39,10 +33,7 @@ export default function DashboardNav() {
   };
 
   const handleLogout = async () => {
-    try {
-      const { auth } = await import('@/lib/firebase');
-      if (auth) await auth.signOut();
-    } catch (e) {}
+    await logout();
     router.push('/auth/login');
   };
 

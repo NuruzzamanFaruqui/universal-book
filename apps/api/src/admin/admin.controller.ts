@@ -1,11 +1,11 @@
 import { Controller, Get, Put, Post, Delete, Param, Body, UseGuards, UnauthorizedException, Request } from '@nestjs/common';
 import { AdminService } from './admin.service';
-import { FirebaseGuard } from '../auth/firebase.guard';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 const ADMIN_EMAILS = ['faruqui.swe@diu.edu.bd', 'levin.kuhlmann@monash.edu'];
 
 @Controller('admin')
-@UseGuards(FirebaseGuard)
+@UseGuards(JwtAuthGuard)
 export class AdminController {
   constructor(private readonly adminService: AdminService) {}
 

@@ -5,8 +5,9 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { BookOpen } from 'lucide-react';
+import { API_URL } from '@/lib/config';
+import { register } from '@/lib/auth';
 
-const API_URL = "https://api.universal-book.com";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -21,36 +22,10 @@ export default function RegisterPage() {
     setLoading(true);
     setError('');
     try {
-      const { createUserWithEmailAndPassword, updateProfile } = await import('firebase/auth');
-      const { auth } = await import('@/lib/firebase');
-      if (!auth) throw new Error('Auth not available');
-
-      // Step 1: Create Firebase user
-      const result = await createUserWithEmailAndPassword(auth, email, password);
-      await updateProfile(result.user, { displayName: name });
-
-      // Step 2: Get fresh token
-      const token = await result.user.getIdToken(true);
-
-      // Step 3: Register in our backend
-      const res = await fetch(`${API_URL}/api/auth/login`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Backend registration failed');
-      }
-
-      // Step 4: Store token
-      localStorage.setItem('ub_token', token);
+      await register(email, password, name);
       router.push('/feed');
     } catch (err: any) {
-      setError(err.message || 'Registration failed');
+      setError(err.message || 'Could not create your account.');
     } finally {
       setLoading(false);
     }

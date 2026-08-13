@@ -4,16 +4,10 @@ import { useEffect, useState, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { BookOpen, Bell, Wallet, ChevronDown, Settings, LogOut } from 'lucide-react';
+import { getToken as getFreshToken, logout, onAuthChange } from '@/lib/auth';
+import { API_URL } from '@/lib/config';
 
-const API_URL = 'https://api.universal-book.com';
 
-async function getFreshToken(): Promise<string | null> {
-  try {
-    const { auth } = await import('@/lib/firebase');
-    if (auth?.currentUser) return await auth.currentUser.getIdToken(true);
-  } catch (e) {}
-  return null;
-}
 
 export default function AppNav() {
   const router = useRouter();
@@ -29,6 +23,8 @@ export default function AppNav() {
 
   useEffect(() => {
     initAuth();
+    // Re-resolve on sign in / sign out, in this tab or another.
+    const unsubscribeAuth = onAuthChange(initAuth);
     const handleClick = (e: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setShowDropdown(false);
@@ -38,28 +34,29 @@ export default function AppNav() {
       }
     };
     document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
+    return () => {
+      unsubscribeAuth();
+      document.removeEventListener('mousedown', handleClick);
+    };
   }, []);
 
   const initAuth = async () => {
     try {
-      const { auth } = await import('@/lib/firebase');
-      if (!auth) return;
-      const { onAuthStateChanged } = await import('firebase/auth');
-      onAuthStateChanged(auth, async (firebaseUser) => {
-        if (firebaseUser) {
-          const token = await firebaseUser.getIdToken();
-          localStorage.setItem('ub_token', token);
-          const [userRes, balRes, notifRes] = await Promise.all([
-            fetch(`${API_URL}/api/users/me`, { headers: { Authorization: `Bearer ${token}` } }),
-            fetch(`${API_URL}/api/payments/balance`, { headers: { Authorization: `Bearer ${token}` } }),
-            fetch(`${API_URL}/api/social/notifications/unread-count`, { headers: { Authorization: `Bearer ${token}` } }),
-          ]);
-          if (userRes.ok) setUser(await userRes.json());
-          if (balRes.ok) setCreditBalance((await balRes.json()).balance);
-          if (notifRes.ok) setUnreadCount((await notifRes.json()).count || 0);
-        }
-      });
+      const token = await getFreshToken();
+      if (!token) {
+        setUser(null);
+        setCreditBalance(null);
+        setUnreadCount(0);
+        return;
+      }
+      const [userRes, balRes, notifRes] = await Promise.all([
+        fetch(`${API_URL}/api/users/me`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${API_URL}/api/payments/balance`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${API_URL}/api/social/notifications/unread-count`, { headers: { Authorization: `Bearer ${token}` } }),
+      ]);
+      if (userRes.ok) setUser(await userRes.json());
+      if (balRes.ok) setCreditBalance((await balRes.json()).balance);
+      if (notifRes.ok) setUnreadCount((await notifRes.json()).count || 0);
     } catch (e) {}
   };
 
@@ -82,11 +79,7 @@ export default function AppNav() {
   };
 
   const handleLogout = async () => {
-    try {
-      const { auth } = await import('@/lib/firebase');
-      if (auth) await auth.signOut();
-    } catch (e) {}
-    localStorage.removeItem('ub_token');
+    await logout();
     router.push('/auth/login');
   };
 

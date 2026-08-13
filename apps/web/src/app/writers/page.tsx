@@ -5,8 +5,8 @@ export const dynamic = 'force-dynamic';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { BookOpen, Users, Search } from 'lucide-react';
+import { API_URL } from '@/lib/config';
 
-const API_URL = "https://api.universal-book.com";
 
 export default function WritersPage() {
   const [writers, setWriters] = useState<any[]>([]);

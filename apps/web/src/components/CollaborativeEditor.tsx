@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { ref, onValue, set, off } from 'firebase/database';
-import { database } from '@/lib/firebase';
+import { subscribeToChapter, leaveChapter } from '@/lib/realtime';
+import { POLL } from '@/lib/config';
 
 interface CollaborativeEditorProps {
   bookId: string;
@@ -23,7 +23,12 @@ export default function CollaborativeEditor({
   const [activeUsers, setActiveUsers] = useState<any[]>([]);
   const [wordCount, setWordCount] = useState(0);
   const isRemoteUpdate = useRef(false);
-  const dbPath = `books/${bookId}/chapters/${chapterId}`;
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Keep the latest onSave reachable from the debounce timer without making the
+  // timer's effect depend on a prop that changes identity every render.
+  const onSaveRef = useRef(onSave);
+  useEffect(() => { onSaveRef.current = onSave; }, [onSave]);
 
   useEffect(() => {
     if (editorRef.current && initialContent) {
@@ -32,61 +37,59 @@ export default function CollaborativeEditor({
     }
   }, [initialContent]);
 
-  // Listen to Firebase for real-time updates
+  // Poll for collaborator edits and the active-user list. The same request
+  // registers this editor's presence.
   useEffect(() => {
-    if (!database) return;
-    const contentRef = ref(database, `${dbPath}/content`);
-    const unsubscribe = onValue(contentRef, (snapshot) => {
-      const data = snapshot.val();
-      if (data && data.updatedBy !== userId && editorRef.current) {
-        if (editorRef.current.innerHTML !== data.html) {
-          isRemoteUpdate.current = true;
-          editorRef.current.innerHTML = data.html;
-          updateWordCount();
-          isRemoteUpdate.current = false;
-        }
-      }
-    });
-    return () => off(contentRef);
-  }, [dbPath, userId]);
+    if (!bookId || !chapterId) return;
 
-  // Track active users
-  useEffect(() => {
-    if (!database) return;
-    const usersRef = ref(database, `${dbPath}/activeUsers/${userId}`);
-    set(usersRef, { name: userName, userId, joinedAt: Date.now() });
-    const allUsersRef = ref(database, `${dbPath}/activeUsers`);
-    onValue(allUsersRef, (snapshot) => {
-      const data = snapshot.val();
-      if (data) setActiveUsers(Object.values(data));
-    });
+    const unsubscribe = subscribeToChapter(bookId, chapterId, (state) => {
+      setActiveUsers(state.activeUsers.filter((u) => u.userId !== userId));
+
+      // `content` is null when we're already current or made the last edit
+      // ourselves, so this only fires for genuine remote changes.
+      if (state.content === null || !editorRef.current) return;
+      if (editorRef.current.innerHTML === state.content) return;
+      // Never overwrite a document the user is actively typing into — that
+      // would drop their caret and lose in-flight keystrokes.
+      if (document.activeElement === editorRef.current) return;
+
+      isRemoteUpdate.current = true;
+      editorRef.current.innerHTML = state.content;
+      updateWordCount();
+      isRemoteUpdate.current = false;
+    }, POLL.editor);
+
     return () => {
-      set(usersRef, null);
-      off(allUsersRef);
+      unsubscribe();
+      leaveChapter(bookId, chapterId);
     };
-  }, [dbPath, userId, userName]);
+  }, [bookId, chapterId, userId]);
 
-  // Auto-save every 30 seconds
+  // Flush any pending edit when the chapter changes or the editor unmounts.
   useEffect(() => {
-    if (!onSave) return;
-    const interval = setInterval(async () => {
-      if (editorRef.current) {
-        setIsSaving(true);
-        await onSave(editorRef.current.innerHTML);
-        setLastSaved(new Date());
-        setIsSaving(false);
+    return () => {
+      if (saveTimer.current) {
+        clearTimeout(saveTimer.current);
+        if (editorRef.current) onSaveRef.current?.(editorRef.current.innerHTML);
       }
-    }, 30000);
-    return () => clearInterval(interval);
-  }, [onSave]);
+    };
+  }, [chapterId]);
 
   const handleInput = () => {
     if (!editorRef.current || isRemoteUpdate.current) return;
     updateWordCount();
-    if (database) {
-      const contentRef = ref(database, `${dbPath}/content`);
-      set(contentRef, { html: editorRef.current.innerHTML, updatedBy: userId, updatedAt: Date.now() });
-    }
+
+    // Debounced persist: a burst of typing coalesces into one request, which
+    // both saves and publishes the change to collaborators.
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(async () => {
+      saveTimer.current = null;
+      if (!editorRef.current || !onSaveRef.current) return;
+      setIsSaving(true);
+      await onSaveRef.current(editorRef.current.innerHTML);
+      setLastSaved(new Date());
+      setIsSaving(false);
+    }, 1200);
   };
 
   const updateWordCount = () => {
@@ -214,7 +217,7 @@ export default function CollaborativeEditor({
 
       <div className="flex items-center justify-between px-4 py-2 bg-slate-800 border-t border-slate-700 text-xs text-slate-500">
         <span>{wordCount} words</span>
-        <span>{lastSaved ? `Last saved: ${lastSaved.toLocaleTimeString()}` : 'Auto-saves every 30s'}</span>
+        <span>{lastSaved ? `Last saved: ${lastSaved.toLocaleTimeString()}` : 'Saves as you type'}</span>
       </div>
     </div>
   );

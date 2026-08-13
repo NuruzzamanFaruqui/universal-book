@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Delete, Body, Param, Request, UseGuards } from '@nestjs/common';
 import { GroupsService } from './groups.service';
-import { FirebaseGuard } from '../auth/firebase.guard';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 @Controller('groups')
 export class GroupsController {
@@ -12,7 +12,7 @@ export class GroupsController {
   }
 
   @Get('my')
-  @UseGuards(FirebaseGuard)
+  @UseGuards(JwtAuthGuard)
   async getMyGroups(@Request() req: any) {
     return this.groupsService.getUserGroups(req.user.id);
   }
@@ -28,25 +28,25 @@ export class GroupsController {
   }
 
   @Post()
-  @UseGuards(FirebaseGuard)
+  @UseGuards(JwtAuthGuard)
   async createGroup(@Request() req: any, @Body() body: { name: string; description?: string; isPublic?: boolean }) {
     return this.groupsService.createGroup(req.user.id, body);
   }
 
   @Post(':id/join')
-  @UseGuards(FirebaseGuard)
+  @UseGuards(JwtAuthGuard)
   async joinGroup(@Param('id') id: string, @Request() req: any) {
     return this.groupsService.joinGroup(req.user.id, id);
   }
 
   @Post(':id/messages')
-  @UseGuards(FirebaseGuard)
+  @UseGuards(JwtAuthGuard)
   async sendMessage(@Param('id') id: string, @Body() body: { message: string }, @Request() req: any) {
     return this.groupsService.sendMessage(req.user.id, id, body.message);
   }
 
   @Delete(':id')
-  @UseGuards(FirebaseGuard)
+  @UseGuards(JwtAuthGuard)
   async deleteGroup(@Param('id') id: string, @Request() req: any) {
     return this.groupsService.deleteGroup(req.user.id, id);
   }

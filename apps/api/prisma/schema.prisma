@@ -7,89 +7,142 @@ datasource db {
 }
 
 model User {
-  id            String         @id @default(uuid())
-  email         String         @unique
-  name          String?
-  avatarUrl     String?
-  firebaseUid   String         @unique
-  plan          Plan           @default(FREE)
-  booksCount    Int            @default(0)
-  bio                   String?
-  website               String?
-  location              String?
-  twitter               String?
-  linkedin              String?
-  instagram             String?
-  academicBackground    String?
+  id                     String               @id @default(uuid())
+  email                  String               @unique
+  name                   String?
+  avatarUrl              String?
+  passwordHash           String
+  emailVerified          Boolean              @default(false)
+  // Presence heartbeat — online means this is within PRESENCE_WINDOW_MS.
+  lastSeenAt             DateTime?
+  plan                   Plan                 @default(FREE)
+  booksCount             Int                  @default(0)
+  bio                    String?
+  website                String?
+  location               String?
+  twitter                String?
+  linkedin               String?
+  instagram              String?
+  academicBackground     String?
   professionalBackground String?
-  expertise             String[]
-  isVerified            Boolean  @default(false)
-  profilePhoto          String?
-  creditBalance         Float    @default(0)
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  books         Book[]
-  subscriptions Subscription[]
-  purchases     BookPurchase[]
-  reviews       BookReview[]
-  bookFollows   BookFollow[]
-  following     WriterFollow[] @relation("follower")
-  followers     WriterFollow[] @relation("writer")
-  activityFeed  ActivityFeed[]
-  earnings      WriterEarning[]
-  groupsCreated   UserGroup[]    @relation("groupCreator")
-  posts           Post[]
-  postLikes       PostLike[]
-  postComments    PostComment[]
-  postReposts     PostRepost[]
-  notifications   Notification[]
-  conversations1  Conversation[] @relation("conversation_user1")
-  conversations2  Conversation[] @relation("conversation_user2")
-  sentMessages          DirectMessage[]
-  connectionsAsSender   Connection[] @relation("connectionSender")
-  connectionsAsReceiver Connection[] @relation("connectionReceiver")
-  authorGroupsCreated AuthorGroup[] @relation("authorGroupCreator")
+  expertise              String[]
+  isVerified             Boolean              @default(false)
+  profilePhoto           String?
+  creditBalance          Float                @default(0)
+  createdAt              DateTime             @default(now())
+  updatedAt              DateTime             @updatedAt
+  books                  Book[]
+  subscriptions          Subscription[]
+  purchases              BookPurchase[]
+  reviews                BookReview[]
+  bookFollows            BookFollow[]
+  following              WriterFollow[]       @relation("follower")
+  followers              WriterFollow[]       @relation("writer")
+  activityFeed           ActivityFeed[]
+  earnings               WriterEarning[]
+  groupsCreated          UserGroup[]          @relation("groupCreator")
+  posts                  Post[]
+  postLikes              PostLike[]
+  postComments           PostComment[]
+  postReposts            PostRepost[]
+  notifications          Notification[]
+  conversations1         Conversation[]       @relation("conversation_user1")
+  conversations2         Conversation[]       @relation("conversation_user2")
+  sentMessages           DirectMessage[]
+  connectionsAsSender    Connection[]         @relation("connectionSender")
+  connectionsAsReceiver  Connection[]         @relation("connectionReceiver")
+  authorGroupsCreated    AuthorGroup[]        @relation("authorGroupCreator")
   authorGroupMemberships AuthorGroupMember[]
-  groupMemberships GroupMember[]
-  groupMessages   GroupMessage[]
-  creditTransactions CreditTransaction[]
-  affiliateLinks     AffiliateLink[]
-  affiliateEarnings  AffiliateEarning[]
+  groupMemberships       GroupMember[]
+  groupMessages          GroupMessage[]
+  creditTransactions     CreditTransaction[]
+  affiliateLinks         AffiliateLink[]
+  affiliateEarnings      AffiliateEarning[]
+  refreshTokens          RefreshToken[]
+  passwordResets         PasswordResetToken[]
+  editorPresence         EditorPresence[]
+}
+
+// ─── Auth ─────────────────────────────────────────────────────────────────────
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // SHA-256 of the opaque token. The plaintext is only ever sent to the client.
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  userAgent String?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+// Who currently has a chapter open in the editor.
+model EditorPresence {
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chapterId  String
+  chapter    Chapter  @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  lastSeenAt DateTime @default(now())
+
+  @@id([userId, chapterId])
+  @@index([chapterId, lastSeenAt])
 }
 
 model Book {
-  id          String      @id @default(uuid())
-  title       String
-  subtitle    String?
-  synopsis    String?
-  genre       String
-  tone        String
-  audience    String?
-  language    String      @default("English")
-  status      BookStatus  @default(DRAFT)
-  coverUrl    String?
-  userId      String
-  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  chapters    Chapter[]
-  published   PublishedBook?
-  follows     BookFollow[]
-  authorGroups AuthorGroup[]
-  posts        Post[]         @relation("postBook")
+  id             String          @id @default(uuid())
+  title          String
+  subtitle       String?
+  synopsis       String?
+  genre          String
+  tone           String
+  audience       String?
+  language       String          @default("English")
+  status         BookStatus      @default(DRAFT)
+  coverUrl       String?
+  userId         String
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chapters       Chapter[]
+  published      PublishedBook?
+  follows        BookFollow[]
+  authorGroups   AuthorGroup[]
+  posts          Post[]          @relation("postBook")
   affiliateLinks AffiliateLink[]
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
 }
 
 model Chapter {
-  id        String   @id @default(uuid())
-  number    Int
-  title     String
-  summary   String?
-  content   String?
-  bookId    String
-  book      Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String           @id @default(uuid())
+  number      Int
+  title       String
+  summary     String?
+  content     String?
+  bookId      String
+  book        Book             @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  // Who last wrote `content`, so a polling client can skip echoing back
+  // its own edit.
+  updatedById String?
+  presence    EditorPresence[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([bookId, number])
 }
 
 model Subscription {
@@ -130,19 +183,19 @@ model PublishedBook {
 }
 
 model BookPurchase {
-  id               String        @id @default(uuid())
+  id               String            @id @default(uuid())
   bookId           String
-  publishedBook    PublishedBook @relation(fields: [bookId], references: [bookId], onDelete: Cascade)
+  publishedBook    PublishedBook     @relation(fields: [bookId], references: [bookId], onDelete: Cascade)
   buyerId          String
-  buyer            User          @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  buyer            User              @relation(fields: [buyerId], references: [id], onDelete: Cascade)
   amount           Float
   platformFee      Float
   writerEarning    Float
-  affiliateFee     Float         @default(0)
-  paymentMethod    String        @default("card")
+  affiliateFee     Float             @default(0)
+  paymentMethod    String            @default("card")
   stripeSessionId  String?
   affiliateEarning AffiliateEarning?
-  createdAt        DateTime      @default(now())
+  createdAt        DateTime          @default(now())
 }
 
 model BookReview {
@@ -201,15 +254,15 @@ model WriterEarning {
 // ─── Credit System ────────────────────────────────────────────────────────────
 
 model CreditTransaction {
-  id          String              @id @default(uuid())
-  userId      String
-  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type        CreditTransactionType
-  amount      Float
-  balanceAfter Float
-  description String
+  id              String                @id @default(uuid())
+  userId          String
+  user            User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type            CreditTransactionType
+  amount          Float
+  balanceAfter    Float
+  description     String
   stripeSessionId String?
-  createdAt   DateTime            @default(now())
+  createdAt       DateTime              @default(now())
 }
 
 enum CreditTransactionType {
@@ -233,7 +286,7 @@ model AffiliateLink {
   clicks    Int      @default(0)
   createdAt DateTime @default(now())
 
-  earnings  AffiliateEarning[]
+  earnings AffiliateEarning[]
 
   @@unique([userId, bookId])
 }
@@ -268,26 +321,26 @@ enum BookStatus {
 // ─── Community & Social ───────────────────────────────────────────────────────
 
 model UserGroup {
-  id          String   @id @default(uuid())
+  id          String         @id @default(uuid())
   name        String
   description String?
   coverUrl    String?
-  isPublic    Boolean  @default(true)
+  isPublic    Boolean        @default(true)
   createdBy   String
-  creator     User     @relation("groupCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+  creator     User           @relation("groupCreator", fields: [createdBy], references: [id], onDelete: Cascade)
   members     GroupMember[]
   messages    GroupMessage[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
 }
 
 model GroupMember {
-  userId    String
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  groupId   String
-  group     UserGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  role      String    @default("member")
-  joinedAt  DateTime  @default(now())
+  userId   String
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  groupId  String
+  group    UserGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  role     String    @default("member")
+  joinedAt DateTime  @default(now())
 
   @@id([userId, groupId])
 }
@@ -300,28 +353,30 @@ model GroupMessage {
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   message   String
   createdAt DateTime  @default(now())
+
+  @@index([groupId, createdAt])
 }
 
 model AuthorGroup {
-  id          String   @id @default(uuid())
+  id          String              @id @default(uuid())
   name        String
   description String?
   bookId      String?
-  book        Book?    @relation(fields: [bookId], references: [id], onDelete: SetNull)
+  book        Book?               @relation(fields: [bookId], references: [id], onDelete: SetNull)
   createdBy   String
-  creator     User     @relation("authorGroupCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+  creator     User                @relation("authorGroupCreator", fields: [createdBy], references: [id], onDelete: Cascade)
   members     AuthorGroupMember[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
 }
 
 model AuthorGroupMember {
-  userId      String
-  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  groupId     String
-  group       AuthorGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  role        String      @default("writer")
-  joinedAt    DateTime    @default(now())
+  userId   String
+  user     User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  groupId  String
+  group    AuthorGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  role     String      @default("writer")
+  joinedAt DateTime    @default(now())
 
   @@id([userId, groupId])
 }
@@ -405,6 +460,9 @@ model DirectMessage {
   content        String
   isRead         Boolean      @default(false)
   createdAt      DateTime     @default(now())
+
+  // Polling reads are always "messages in this conversation after <ts>".
+  @@index([conversationId, createdAt])
 }
 
 model Connection {

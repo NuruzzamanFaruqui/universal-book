@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { BookOpen, Users, LayoutDashboard, Settings, BookMarked, LogOut, Shield, ChevronRight } from 'lucide-react';
+import { fetchMe, logout } from '@/lib/auth';
 
 const ADMIN_EMAILS = ['faruqui.swe@diu.edu.bd', 'levin.kuhlmann@monash.edu'];
 
@@ -15,21 +16,26 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   useEffect(() => {
     let mounted = true;
+    // Presentation only — the real gate is the ADMIN_EMAILS check in
+    // admin.controller.ts, which runs server-side on every admin request.
     const checkAdmin = async () => {
       try {
-        const { auth } = await import('@/lib/firebase');
-        if (!auth) { if (mounted) { setDebugMsg('No auth'); setStatus('denied'); } return; }
-        const { onAuthStateChanged } = await import('firebase/auth');
-        const unsubscribe = onAuthStateChanged(auth, (user) => {
-          if (!mounted) return;
-          unsubscribe();
-          if (!user || !user.email) { setDebugMsg('Not logged in'); setStatus('denied'); router.push('/auth/login'); return; }
-          const email = user.email.toLowerCase().trim();
-          setDebugMsg(`Logged in as: ${email}`);
-          const isAdmin = ADMIN_EMAILS.some(a => a.toLowerCase() === email);
-          if (isAdmin) { setStatus('authorized'); }
-          else { setDebugMsg(`Not admin: ${email}`); setStatus('denied'); }
-        });
+        const user = await fetchMe();
+        if (!mounted) return;
+        if (!user?.email) {
+          setDebugMsg('Not logged in');
+          setStatus('denied');
+          router.push('/auth/login');
+          return;
+        }
+        const email = user.email.toLowerCase().trim();
+        setDebugMsg(`Logged in as: ${email}`);
+        if (ADMIN_EMAILS.some(a => a.toLowerCase() === email)) {
+          setStatus('authorized');
+        } else {
+          setDebugMsg(`Not admin: ${email}`);
+          setStatus('denied');
+        }
       } catch (e: any) {
         if (mounted) { setDebugMsg(`Error: ${e.message}`); setStatus('denied'); }
       }
@@ -39,11 +45,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }, []);
 
   const handleLogout = async () => {
-    try {
-      const { auth } = await import('@/lib/firebase');
-      if (auth) { const { signOut } = await import('firebase/auth'); await signOut(auth); }
-    } catch (e) {}
-    localStorage.removeItem('ub_token');
+    await logout();
     router.push('/');
   };
 

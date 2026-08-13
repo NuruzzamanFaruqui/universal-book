@@ -32,19 +32,19 @@ An AI-powered publishing platform combining:
 
 ### Frontend
 - **Next.js 14** (App Router) + TypeScript + Tailwind CSS
-- **Firebase Auth** (onAuthStateChanged) + Firebase Realtime DB
+- **Native JWT auth** (`lib/auth.ts`) — no Firebase
 - **contentEditable** rich text editor (NOT Tiptap — incompatible with Next.js 14)
 - **lucide-react** icons
 
 ### Backend
 - **NestJS** (Node.js + TypeScript)
 - **Prisma 7** + PrismaPg adapter + **PostgreSQL** (Google Cloud SQL)
-- **Firebase Admin SDK** for JWT verification
+- **Own JWT issuer** (access + rotating refresh tokens) with bcrypt password hashing
+- **Resend** for transactional email (password reset)
 - **Anthropic SDK** (Claude AI) + **Stripe** payments
 
 ### Infrastructure
-- **Google Cloud Run** (serverless containers)
-- **Firebase** Auth + Realtime Database
+- **Google Cloud Run** (serverless containers, scales to zero)
 - **Domain:** universal-book.com (Namecheap) with Google Cloud SSL
 
 ## 📁 Project Structure
@@ -55,7 +55,7 @@ universal-book/
 │   │   ├── src/
 │   │   │   ├── admin/          # Admin CRUD + settings
 │   │   │   ├── ai/             # Claude API service
-│   │   │   ├── auth/           # Firebase JWT guard
+│   │   │   ├── auth/           # JWT issuer + guards
 │   │   │   ├── author-groups/  # Co-writing groups
 │   │   │   ├── books/          # Book CRUD + AI generation
 │   │   │   ├── groups/         # User communities
@@ -68,7 +68,7 @@ universal-book/
 │       └── src/
 │           ├── app/            # Pages (App Router)
 │           ├── components/     # Shared components
-│           └── lib/firebase.ts # Firebase config
+│           └── lib/            # auth.ts, realtime.ts, config.ts, api.ts
 ```
 
 ## 📖 Book Creation — 3 Modes
@@ -128,8 +128,8 @@ git push
 | GCP Project | universal-book-365 |
 | Region | us-central1 |
 | Database | PostgreSQL @ 34.70.84.122:5432 |
-| Firebase Project | universal-book-levin |
-| Realtime DB | Chat, editor sync, online status |
+| Auth | Self-hosted JWT (Postgres-backed) |
+| Real-time | Polling endpoints on the API |
 
 ## 🔐 Admin Panel
 
@@ -145,10 +145,10 @@ URL: `/universalbook-admin` (not publicly linked)
 ## ⚠️ Critical Architecture Notes
 
 1. **Do NOT install Tiptap** — incompatible with Next.js 14. Use `contentEditable` instead.
-2. **Socket.io NOT used for real-time** — Cloud Run scales to zero. Firebase RT DB used instead.
+2. **No persistent connections** — Cloud Run scales to zero, so real-time is polling against the API (`lib/realtime.ts`). Cadences live in `lib/config.ts`.
 3. **MessagingWidget must use `dynamic` import with `ssr: false`** in `layout.tsx`.
-4. **All `NEXT_PUBLIC_` vars are hardcoded** in page files — required at Next.js build time.
-5. **Always use `onAuthStateChanged`** — never `auth.currentUser` (null on first render).
+4. **The API origin lives in `lib/config.ts`** — one constant, inlined at build time. Do not re-hardcode it per page.
+5. **Use `getToken()` from `lib/auth.ts`** — it refreshes expired tokens automatically. Subscribe to sign-in changes with `onAuthChange()`.
 6. **Backend 404 on `/`** is normal — NestJS has no root route.
 
 ## 💳 Stripe Setup
@@ -163,8 +163,8 @@ URL: `/universalbook-admin` (not publicly linked)
 - [ ] Book cover page generation
 - [ ] PDF/EPUB export
 - [ ] Complete Stripe purchase flow (unlock chapters)
-- [ ] Firebase security rules (currently test mode)
-- [ ] Email notifications
+- [x] ~~Firebase security rules~~ — Firebase removed entirely, see `MIGRATION-FIREBASE-REMOVAL.md`
+- [ ] Email notifications beyond password reset
 - [ ] Mobile app (React Native)
 
 ## 👥 Team
