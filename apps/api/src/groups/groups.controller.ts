@@ -18,13 +18,15 @@ export class GroupsController {
   }
 
   @Get(':id')
-  async getGroup(@Param('id') id: string) {
-    return this.groupsService.getGroupById(id);
+  @UseGuards(JwtAuthGuard)
+  async getGroup(@Param('id') id: string, @Request() req: any) {
+    return this.groupsService.getGroupById(id, req.user.id);
   }
 
   @Get(':id/messages')
-  async getMessages(@Param('id') id: string) {
-    return this.groupsService.getMessages(id);
+  @UseGuards(JwtAuthGuard)
+  async getMessages(@Param('id') id: string, @Request() req: any) {
+    return this.groupsService.getMessages(id, req.user.id);
   }
 
   @Post()

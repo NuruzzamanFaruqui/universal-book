@@ -331,14 +331,28 @@ export class SocialService {
     });
     const recipientId =
       conversation!.user1Id === senderId ? conversation!.user2Id : conversation!.user1Id;
-    await this.prisma.notification.create({
-      data: {
+
+    // One unread notification per conversation, not per message — a fifty
+    // message exchange should light the bell once, not fifty times.
+    const alreadyPending = await this.prisma.notification.findFirst({
+      where: {
         userId: recipientId,
         type: 'DIRECT_MESSAGE',
-        message: 'sent you a message',
         linkId: conversationId,
+        isRead: false,
       },
+      select: { id: true },
     });
+    if (!alreadyPending) {
+      await this.prisma.notification.create({
+        data: {
+          userId: recipientId,
+          type: 'DIRECT_MESSAGE',
+          message: 'sent you a message',
+          linkId: conversationId,
+        },
+      });
+    }
 
     return message;
   }

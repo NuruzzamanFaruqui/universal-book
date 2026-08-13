@@ -158,11 +158,44 @@ export class AdminService {
     });
   }
 
+  /** Setting keys whose values must never leave the server. */
+  private static readonly SECRET_KEYS = new Set([
+    'STRIPE_SECRET_KEY',
+    'STRIPE_WEBHOOK_SECRET',
+    'ANTHROPIC_API_KEY',
+  ]);
+
+  /** `sk_live_abcd…wxyz` — enough to recognise which key is stored, useless if intercepted. */
+  private static mask(value: string): string {
+    if (!value) return '';
+    if (value.length <= 8) return '••••';
+    return `${value.slice(0, 6)}••••${value.slice(-4)}`;
+  }
+
+  /**
+   * Values for secret keys are masked. The admin UI only needs to show which
+   * key is configured, never the key itself — returning it put live Stripe and
+   * Anthropic credentials into the browser and every log along the way.
+   */
   async getAllSettings() {
     const settings = await this.prisma.setting.findMany();
-    const result: any = {};
-    settings.forEach(s => { result[s.key] = s.value; });
+    const result: Record<string, string> = {};
+    settings.forEach((s) => {
+      result[s.key] = AdminService.SECRET_KEYS.has(s.key)
+        ? AdminService.mask(s.value)
+        : s.value;
+    });
     return result;
+  }
+
+  /**
+   * The UI is prefilled with masked secrets, so a plain save would write the
+   * mask over the real key. Anything that still looks masked, or is blank, is
+   * treated as "unchanged" and skipped.
+   */
+  private async setSecretIfChanged(key: string, value: string | undefined) {
+    if (!value || value.includes('••••')) return;
+    await this.setSetting(key, value);
   }
 
   async saveStripeSettings(data: {
@@ -174,8 +207,8 @@ export class AdminService {
   }) {
     await Promise.all([
       this.setSetting('STRIPE_PUBLISHABLE_KEY', data.stripePublishableKey),
-      this.setSetting('STRIPE_SECRET_KEY', data.stripeSecretKey),
-      this.setSetting('STRIPE_WEBHOOK_SECRET', data.stripeWebhookSecret),
+      this.setSecretIfChanged('STRIPE_SECRET_KEY', data.stripeSecretKey),
+      this.setSecretIfChanged('STRIPE_WEBHOOK_SECRET', data.stripeWebhookSecret),
       this.setSetting('STRIPE_AUTHOR_PRICE_ID', data.authorPriceId),
       this.setSetting('STRIPE_PUBLISHER_PRICE_ID', data.publisherPriceId),
     ]);
@@ -188,7 +221,7 @@ export class AdminService {
     maxTokens: string;
   }) {
     await Promise.all([
-      this.setSetting('ANTHROPIC_API_KEY', data.anthropicKey),
+      this.setSecretIfChanged('ANTHROPIC_API_KEY', data.anthropicKey),
       this.setSetting('AI_MODEL', data.model),
       this.setSetting('AI_MAX_TOKENS', data.maxTokens),
     ]);

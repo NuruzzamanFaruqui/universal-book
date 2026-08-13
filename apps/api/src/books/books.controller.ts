@@ -5,6 +5,14 @@ import {
 import { BooksService } from './books.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AiService } from '../ai/ai.service';
+import { Throttle } from '@nestjs/throttler';
+
+/**
+ * The wizard's three planning steps call Claude without charging credits, so
+ * they are the cheapest way to spend someone else's Anthropic budget. Ten per
+ * minute is well above real wizard use and far below a loop.
+ */
+const AI_LIMIT = { default: { ttl: 60_000, limit: 10 } };
 
 @Controller('books')
 @UseGuards(JwtAuthGuard)
@@ -35,16 +43,19 @@ export class BooksController {
   }
 
   @Post('generate-titles')
+  @Throttle(AI_LIMIT)
   async generateTitles(@Body() body: { topic: string; description: string; genre: string; tone: string }) {
     return this.aiService.generateTitles(body.topic, body.description, body.genre, body.tone);
   }
 
   @Post('generate-outlines')
+  @Throttle(AI_LIMIT)
   async generateOutlines(@Body() body: { topic: string; description: string; genre: string; tone: string; audience: string; title: string; chaptersCount: number }) {
     return this.aiService.generateOutlines(body.topic, body.description, body.genre, body.tone, body.audience, body.title, body.chaptersCount);
   }
 
   @Post('generate-synopsis')
+  @Throttle(AI_LIMIT)
   async generateSynopsis(@Body() body: { topic: string; title: string; genre: string; tone: string; audience: string; outline: any }) {
     return this.aiService.generateSynopses(body.topic, body.title, body.genre, body.tone, body.audience, body.outline);
   }

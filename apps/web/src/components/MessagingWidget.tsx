@@ -53,12 +53,27 @@ export default function MessagingWidget() {
   }, [currentUser]);
 
   // Online indicators. AuthProvider owns the heartbeat; this only reads.
+  //
+  // Keyed on the peer ids rather than the conversations array: that array is
+  // refetched on an interval and arrives with a new identity every time, which
+  // tore this subscription down and restarted it every few seconds.
+  const conversationsRef = useRef<any[]>([]);
+  useEffect(() => { conversationsRef.current = conversations; }, [conversations]);
+
+  const peerKey = currentUser
+    ? conversations
+        .map((c: any) => (c.user1?.id === currentUser.id ? c.user2?.id : c.user1?.id))
+        .filter(Boolean)
+        .sort()
+        .join(',')
+    : '';
+
   useEffect(() => {
     if (!currentUser) return;
 
     const peerIds = () =>
-      conversations
-        .map((c) => (c.user1?.id === currentUser.id ? c.user2?.id : c.user1?.id))
+      conversationsRef.current
+        .map((c: any) => (c.user1?.id === currentUser.id ? c.user2?.id : c.user1?.id))
         .filter(Boolean);
 
     return subscribeToPresence(
@@ -69,7 +84,8 @@ export default function MessagingWidget() {
       },
       POLL.presence,
     );
-  }, [currentUser, conversations]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser, peerKey]);
 
   // One message poll per open chat window.
   useEffect(() => {

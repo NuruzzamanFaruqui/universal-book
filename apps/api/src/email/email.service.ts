@@ -66,9 +66,17 @@ export class EmailService {
   private async send(to: string, subject: string, html: string): Promise<boolean> {
     try {
       if (this.transport === 'console') {
-        this.logger.log(`[email:stub] to=${to} subject="${subject}"`);
-        this.logger.debug(html);
-        return true;
+        // Never log the body: these messages carry single-use reset links, and
+        // anyone with log access could redeem one. Outside development, report
+        // failure so callers do not claim mail was sent.
+        this.logger.warn(
+          `No email transport configured — dropping "${subject}" to ${to}. ` +
+          'Set SMTP_HOST or RESEND_API_KEY.',
+        );
+        if (process.env.NODE_ENV !== 'production') {
+          this.logger.debug(`[dev] link for ${to}: ${this.firstLink(html) ?? '(none)'}`);
+        }
+        return process.env.NODE_ENV !== 'production';
       }
 
       if (this.transport === 'smtp') {
@@ -86,6 +94,17 @@ export class EmailService {
       this.logger.error(`Failed sending mail to ${to}: ${err?.message ?? err}`);
       return false;
     }
+  }
+
+  /** Whether mail can actually be delivered. Not user-specific, so exposing it
+   *  leaks nothing about which accounts exist. */
+  get isConfigured(): boolean {
+    return this.transport !== 'console';
+  }
+
+  /** Pulls the action URL out of a rendered email, for local development only. */
+  private firstLink(html: string): string | null {
+    return html.match(/href="([^"]+)"/)?.[1] ?? null;
   }
 
   // ─── Templates ────────────────────────────────────────────────────────────

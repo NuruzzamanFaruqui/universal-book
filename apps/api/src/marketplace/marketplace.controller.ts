@@ -1,5 +1,6 @@
 import { Controller, Get, Post, Body, Param, Query, Request, UseGuards } from '@nestjs/common';
 import { MarketplaceService } from './marketplace.service';
+import { AddReviewDto, PublishBookDto } from './dto/marketplace.dto';
 import { JwtAuthGuard, OptionalJwtAuthGuard } from '../auth/jwt-auth.guard';
 
 @Controller('marketplace')
@@ -45,7 +46,7 @@ export class MarketplaceController {
 
   @Post('books/:bookId/publish')
   @UseGuards(JwtAuthGuard)
-  async publishBook(@Param('bookId') bookId: string, @Body() body: { price: number }, @Request() req: any) {
+  async publishBook(@Param('bookId') bookId: string, @Body() body: PublishBookDto, @Request() req: any) {
     return this.marketplaceService.publishBook(bookId, req.user.id, body.price);
   }
 
@@ -57,8 +58,8 @@ export class MarketplaceController {
 
   @Post('books/:bookId/review')
   @UseGuards(JwtAuthGuard)
-  async addReview(@Param('bookId') bookId: string, @Body() body: { rating: number; comment: string }, @Request() req: any) {
-    return this.marketplaceService.addReview(bookId, req.user.id, body.rating, body.comment);
+  async addReview(@Param('bookId') bookId: string, @Body() body: AddReviewDto, @Request() req: any) {
+    return this.marketplaceService.addReview(bookId, req.user.id, body.rating, body.comment ?? '');
   }
 
   @Post('books/:bookId/follow')

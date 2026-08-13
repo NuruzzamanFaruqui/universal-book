@@ -125,6 +125,8 @@ model Book {
   affiliateLinks AffiliateLink[]
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
+
+  @@index([userId])
 }
 
 model Chapter {
@@ -157,6 +159,16 @@ model Subscription {
   currentPeriodEnd     DateTime?
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
+}
+
+// One row per Stripe event we have already acted on. The unique constraint is
+// the idempotency guarantee: a retried webhook loses the insert race and is
+// skipped rather than paying out twice.
+model ProcessedWebhookEvent {
+  id          String   @id @default(uuid())
+  eventId     String   @unique
+  type        String
+  processedAt DateTime @default(now())
 }
 
 model Setting {
@@ -196,6 +208,9 @@ model BookPurchase {
   stripeSessionId  String?
   affiliateEarning AffiliateEarning?
   createdAt        DateTime          @default(now())
+
+  @@index([buyerId])
+  @@index([bookId, buyerId])
 }
 
 model BookReview {
@@ -239,6 +254,8 @@ model ActivityFeed {
   bookId    String?
   metadata  String?
   createdAt DateTime @default(now())
+
+  @@index([userId])
 }
 
 model WriterEarning {
@@ -263,6 +280,8 @@ model CreditTransaction {
   description     String
   stripeSessionId String?
   createdAt       DateTime              @default(now())
+
+  @@index([userId, createdAt])
 }
 
 enum CreditTransactionType {
@@ -397,6 +416,8 @@ model Post {
   likes         PostLike[]
   comments      PostComment[]
   reposts       PostRepost[]
+
+  @@index([userId, createdAt])
 }
 
 model PostLike {
@@ -438,6 +459,8 @@ model Notification {
   isRead    Boolean  @default(false)
   linkId    String?
   createdAt DateTime @default(now())
+
+  @@index([userId, isRead])
 }
 
 model Conversation {

@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { AiService } from '../ai/ai.service';
 import { PaymentsService } from '../payments/payments.service';
@@ -6,6 +6,8 @@ import { PRESENCE_WINDOW_MS } from '../users/users.service';
 
 @Injectable()
 export class BooksService {
+  private readonly logger = new Logger(BooksService.name);
+
   constructor(
     private prisma: PrismaService,
     private aiService: AiService,
@@ -42,8 +44,11 @@ export class BooksService {
     synopsis?: string;
     outline?: any;
   }) {
-    // Charge $5 credits before generation
+    // Charged up front so a user cannot start work they cannot pay for; the
+    // whole generation is wrapped below so a failure refunds it rather than
+    // silently keeping the money.
     await this.paymentsService.chargeForAiGeneration(userId);
+    let charged = true;
 
     // If user selected title/outline/synopsis from wizard, use them
     // Otherwise fall back to AI-generated outline
@@ -76,6 +81,7 @@ export class BooksService {
       chapters = outline.chapters;
     }
 
+    try {
     const book = await this.prisma.book.create({
       data: {
         title: bookTitle,
@@ -102,7 +108,15 @@ export class BooksService {
       },
     });
 
+    charged = false;
     return book;
+    } finally {
+      if (charged) {
+        await this.paymentsService
+          .refundAiGeneration(userId, 'book generation failed')
+          .catch((e) => this.logger.error(`Refund failed for ${userId}: ${e.message}`));
+      }
+    }
   }
 
   async generateChapterContent(bookId: string, chapterId: string, userId: string) {
@@ -197,11 +211,22 @@ export class BooksService {
   async syncChapter(bookId: string, chapterId: string, userId: string, since?: string) {
     await this.assertCanEditChapter(bookId, chapterId, userId);
 
-    await this.prisma.editorPresence.upsert({
-      where: { userId_chapterId: { userId, chapterId } },
-      create: { userId, chapterId, lastSeenAt: new Date() },
-      update: { lastSeenAt: new Date() },
+    // Refresh presence only once it is halfway to expiring. Writing on every
+    // poll meant one database write per editor every few seconds, purely to
+    // restate something already true.
+    const now = new Date();
+    const staleBefore = new Date(now.getTime() - PRESENCE_WINDOW_MS / 2);
+    const refreshed = await this.prisma.editorPresence.updateMany({
+      where: { userId, chapterId, lastSeenAt: { lt: staleBefore } },
+      data: { lastSeenAt: now },
     });
+    if (refreshed.count === 0) {
+      await this.prisma.editorPresence.upsert({
+        where: { userId_chapterId: { userId, chapterId } },
+        create: { userId, chapterId, lastSeenAt: now },
+        update: {},
+      });
+    }
 
     const cutoff = new Date(Date.now() - PRESENCE_WINDOW_MS);
     const [chapter, present] = await Promise.all([

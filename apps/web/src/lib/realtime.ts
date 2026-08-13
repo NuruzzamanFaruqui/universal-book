@@ -168,11 +168,16 @@ export interface EditorSyncState {
 /**
  * Chapter body plus the list of people currently editing it. The same request
  * doubles as this editor's presence heartbeat.
+ *
+ * `onSync` returns whether it actually applied the content it was given. The
+ * cursor only advances on an applied update — a consumer that declines one
+ * (the editor does, while it has focus) will be offered the same content again
+ * on the next poll instead of losing it.
  */
 export function subscribeToChapter(
   bookId: string,
   chapterId: string,
-  onSync: (state: EditorSyncState) => void,
+  onSync: (state: EditorSyncState) => boolean | void,
   intervalMs: number,
 ): Unsubscribe {
   let since: string | undefined;
@@ -181,14 +186,18 @@ export function subscribeToChapter(
     interval: intervalMs,
     fetcher: async () => {
       const query = since ? `?since=${encodeURIComponent(since)}` : '';
-      const data = await authedGet<EditorSyncState>(
-        `/api/books/${bookId}/chapters/${chapterId}/sync${query}`,
+      return (
+        (await authedGet<EditorSyncState>(
+          `/api/books/${bookId}/chapters/${chapterId}/sync${query}`,
+        )) ?? undefined
       );
-      if (!data) return undefined;
-      since = data.updatedAt;
-      return data;
     },
-    onData: onSync,
+    onData: (data) => {
+      const applied = onSync(data);
+      // A response carrying no content is nothing to miss — advance past it so
+      // presence-only polls don't re-request the whole body forever.
+      if (applied !== false || data.content === null) since = data.updatedAt;
+    },
   });
 }
 

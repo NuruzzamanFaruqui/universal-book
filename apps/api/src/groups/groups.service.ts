@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 
 @Injectable()
@@ -17,7 +17,29 @@ export class GroupsService {
     });
   }
 
-  async getGroupById(groupId: string) {
+  /**
+   * A public group is browsable by any signed-in user. A private one is
+   * readable only by its members — previously `isPublic` existed on the model
+   * but nothing consulted it, and these reads had no guard at all.
+   */
+  private async assertCanRead(groupId: string, userId: string) {
+    const group = await this.prisma.userGroup.findUnique({
+      where: { id: groupId },
+      select: { id: true, isPublic: true, createdBy: true },
+    });
+    if (!group) throw new NotFoundException('Group not found');
+    if (group.isPublic || group.createdBy === userId) return;
+
+    const membership = await this.prisma.groupMember.findUnique({
+      where: { userId_groupId: { userId, groupId } },
+      select: { userId: true },
+    });
+    if (!membership) throw new ForbiddenException('This group is private.');
+  }
+
+  async getGroupById(groupId: string, userId: string) {
+    await this.assertCanRead(groupId, userId);
+
     return this.prisma.userGroup.findUnique({
       where: { id: groupId },
       include: {
@@ -83,7 +105,9 @@ export class GroupsService {
     });
   }
 
-  async getMessages(groupId: string) {
+  async getMessages(groupId: string, userId: string) {
+    await this.assertCanRead(groupId, userId);
+
     return this.prisma.groupMessage.findMany({
       where: { groupId },
       include: {

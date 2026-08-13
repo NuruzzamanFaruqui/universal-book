@@ -3,6 +3,7 @@ import {
   ConflictException,
   Injectable,
   Logger,
+  ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -177,6 +178,16 @@ export class AuthService {
    * response must not reveal whether an account is registered.
    */
   async forgotPassword(email: string) {
+    // Whether a transport exists is a property of the deployment, not of the
+    // address, so saying so leaks nothing — and it beats claiming to have sent
+    // mail that cannot arrive.
+    if (!this.email.isConfigured) {
+      this.logger.error('Password reset requested but no email transport is configured.');
+      throw new ServiceUnavailableException(
+        'Password reset is unavailable right now. Please contact support.',
+      );
+    }
+
     const normalized = email.toLowerCase().trim();
     const user = await this.prisma.user.findUnique({ where: { email: normalized } });
 

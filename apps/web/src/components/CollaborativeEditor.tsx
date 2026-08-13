@@ -24,6 +24,20 @@ export default function CollaborativeEditor({
   const [wordCount, setWordCount] = useState(0);
   const isRemoteUpdate = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // A collaborator's version that arrived while this editor had focus. Held
+  // rather than dropped, and applied on blur or when the writer asks for it.
+  const pendingRemote = useRef<string | null>(null);
+  const [hasIncoming, setHasIncoming] = useState(false);
+
+  const applyRemote = useCallback((html: string) => {
+    if (!editorRef.current) return;
+    isRemoteUpdate.current = true;
+    editorRef.current.innerHTML = html;
+    updateWordCount();
+    isRemoteUpdate.current = false;
+    pendingRemote.current = null;
+    setHasIncoming(false);
+  }, []);
 
   // Keep the latest onSave reachable from the debounce timer without making the
   // timer's effect depend on a prop that changes identity every render.
@@ -47,16 +61,21 @@ export default function CollaborativeEditor({
 
       // `content` is null when we're already current or made the last edit
       // ourselves, so this only fires for genuine remote changes.
-      if (state.content === null || !editorRef.current) return;
-      if (editorRef.current.innerHTML === state.content) return;
-      // Never overwrite a document the user is actively typing into — that
-      // would drop their caret and lose in-flight keystrokes.
-      if (document.activeElement === editorRef.current) return;
+      if (state.content === null || !editorRef.current) return true;
+      if (editorRef.current.innerHTML === state.content) return true;
 
-      isRemoteUpdate.current = true;
-      editorRef.current.innerHTML = state.content;
-      updateWordCount();
-      isRemoteUpdate.current = false;
+      // Never overwrite a document the user is typing into — that would drop
+      // their caret and lose in-flight keystrokes. Hold the change instead and
+      // return false so the poll keeps offering it; dropping it here would let
+      // our next save overwrite the other person's work.
+      if (document.activeElement === editorRef.current) {
+        pendingRemote.current = state.content;
+        setHasIncoming(true);
+        return false;
+      }
+
+      applyRemote(state.content);
+      return true;
     }, POLL.editor);
 
     return () => {
@@ -64,6 +83,17 @@ export default function CollaborativeEditor({
       leaveChapter(bookId, chapterId);
     };
   }, [bookId, chapterId, userId]);
+
+  // Apply whatever was held back as soon as the editor loses focus.
+  useEffect(() => {
+    const el = editorRef.current;
+    if (!el) return;
+    const onBlur = () => {
+      if (pendingRemote.current !== null) applyRemote(pendingRemote.current);
+    };
+    el.addEventListener('blur', onBlur);
+    return () => el.removeEventListener('blur', onBlur);
+  }, []);
 
   // Flush any pending edit when the chapter changes or the editor unmounts.
   useEffect(() => {
@@ -201,6 +231,20 @@ export default function CollaborativeEditor({
           <button onClick={handleManualSave} disabled={isSaving}
             className="px-4 py-1.5 bg-green-600 hover:bg-green-500 disabled:opacity-50 rounded-lg text-sm font-semibold transition">
             {isSaving ? '💾 Saving...' : '💾 Save'}
+          </button>
+        </div>
+      )}
+
+      {hasIncoming && (
+        <div className="flex items-center gap-3 px-4 py-2.5 bg-amber-500/10 border-b border-amber-500/30 text-sm">
+          <span className="text-amber-300">
+            Someone else edited this chapter while you were typing. Saving now replaces their version.
+          </span>
+          <button
+            onClick={() => pendingRemote.current && applyRemote(pendingRemote.current)}
+            className="ml-auto shrink-0 px-3 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 rounded-md text-xs font-semibold transition"
+          >
+            Load their version
           </button>
         </div>
       )}
