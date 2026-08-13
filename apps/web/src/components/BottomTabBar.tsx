@@ -110,7 +110,7 @@ export default function BottomTabBar() {
 
                 {/* AI Book */}
                 <button
-                  onClick={() => handleCreateOption('/dashboard/new-book?mode=ai')}
+                  onClick={() => handleCreateOption('/dashboard/new-book')}
                   className="w-full flex items-center gap-4 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl p-4 transition-colors text-left"
                 >
                   <div className="w-10 h-10 bg-purple-900/50 rounded-xl flex items-center justify-center shrink-0">
@@ -127,7 +127,7 @@ export default function BottomTabBar() {
 
                 {/* Self Write */}
                 <button
-                  onClick={() => handleCreateOption('/dashboard/new-book?mode=self')}
+                  onClick={() => handleCreateOption('/dashboard/new-book')}
                   className="w-full flex items-center gap-4 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl p-4 transition-colors text-left"
                 >
                   <div className="w-10 h-10 bg-blue-900/50 rounded-xl flex items-center justify-center shrink-0">
@@ -144,7 +144,7 @@ export default function BottomTabBar() {
 
                 {/* Import */}
                 <button
-                  onClick={() => handleCreateOption('/dashboard/new-book?mode=import')}
+                  onClick={() => handleCreateOption('/dashboard/import')}
                   className="w-full flex items-center gap-4 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl p-4 transition-colors text-left"
                 >
                   <div className="w-10 h-10 bg-green-900/50 rounded-xl flex items-center justify-center shrink-0">

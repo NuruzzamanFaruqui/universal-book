@@ -5,9 +5,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
-  ArrowLeft, BookOpen, Sparkles, Map, Loader2, PanelRightClose, PanelRightOpen, AlertCircle,
+  ArrowLeft, BookOpen, Sparkles, Map, Loader2, PanelRightClose, PanelRightOpen, AlertCircle, Upload,
 } from 'lucide-react';
 import ManuscriptEditor from '@/components/editor/ManuscriptEditor';
+import DraftWithAi from '@/components/editor/DraftWithAi';
 import { getToken as getFreshToken } from '@/lib/auth';
 import { API_URL } from '@/lib/config';
 import { describeShape, ShapeReport } from '@/lib/writing-ai';
@@ -29,6 +30,7 @@ export default function EditChapterPage() {
   const [liveWords, setLiveWords] = useState(0);
   const [panelOpen, setPanelOpen] = useState(true);
 
+  const [showDraft, setShowDraft] = useState(false);
   const [shape, setShape] = useState<ShapeReport | null>(null);
   const [shapeBusy, setShapeBusy] = useState(false);
   const [shapeError, setShapeError] = useState('');
@@ -89,6 +91,11 @@ export default function EditChapterPage() {
     return (other.content || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 1500);
   }, [book, selectedChapter]);
 
+  const hasWriting = useMemo(
+    () => (book?.chapters || []).some((c: any) => wordsIn(c.content) > 0),
+    [book],
+  );
+
   const totalWords = useMemo(() => {
     if (!book?.chapters) return 0;
     return book.chapters.reduce((sum: number, c: any) =>
@@ -118,7 +125,7 @@ export default function EditChapterPage() {
           <ArrowLeft size={18} />
         </Link>
         <BookOpen size={18} className="text-blue-400 shrink-0" />
-        <span className="font-semibold text-[15px] truncate">{book.title}</span>
+        <span className="font-semibold text-[15px] truncate">{book.title || 'Untitled book'}</span>
         {book.genre && (
           <span className="hidden sm:inline text-[11px] px-2 py-0.5 rounded-full border border-slate-600 text-slate-400 shrink-0">
             {book.genre}
@@ -153,7 +160,7 @@ export default function EditChapterPage() {
                   <span className={`font-mono text-[10px] shrink-0 ${on ? 'text-blue-400' : 'text-slate-600'}`}>
                     {c.number}
                   </span>
-                  <span className="truncate flex-1">{c.title || 'Untitled'}</span>
+                  <span className="truncate flex-1">{c.title || 'Untitled chapter'}</span>
                   <span className="font-mono text-[10px] text-slate-600 shrink-0">
                     {words ? (words > 999 ? `${(words / 1000).toFixed(1)}k` : words) : '—'}
                   </span>
@@ -184,7 +191,7 @@ export default function EditChapterPage() {
               bookId={bookId}
               chapterId={selectedChapter.id}
               initialContent={selectedChapter.content || ''}
-              bookTitle={book.title}
+              bookTitle={book.title || 'Untitled book'}
               tone={book.tone}
               voiceSample={voiceSample}
               userId={user?.id || ''}
@@ -216,6 +223,31 @@ export default function EditChapterPage() {
                   on an empty line to keep writing.
                 </p>
               </div>
+
+              {showDraft ? (
+                <DraftWithAi
+                  bookId={bookId}
+                  hasWriting={hasWriting}
+                  onClose={() => setShowDraft(false)}
+                  onDone={() => { setShowDraft(false); fetchData(); }}
+                />
+              ) : (
+                <button onClick={() => setShowDraft(true)}
+                  className="flex items-center gap-2.5 w-full px-3 py-2.5 text-[13px] text-slate-300 bg-slate-900/60
+                             border border-slate-700/60 rounded-xl hover:border-indigo-500 hover:text-indigo-300
+                             transition text-left">
+                  <Sparkles size={15} /> Draft the whole book with AI
+                  <span className="ml-auto text-[11px] text-slate-500">$5</span>
+                </button>
+              )}
+
+              <Link href="/dashboard/import"
+                className="flex items-center gap-2.5 w-full px-3 py-2.5 text-[13px] text-slate-300 bg-slate-900/60
+                           border border-slate-700/60 rounded-xl hover:border-indigo-500 hover:text-indigo-300
+                           transition text-left">
+                <Upload size={15} /> Import a manuscript
+                <span className="ml-auto text-[11px] text-slate-500">free</span>
+              </Link>
 
               <button onClick={runShape} disabled={shapeBusy}
                 className="flex items-center gap-2.5 w-full px-3 py-2.5 text-[13px] text-slate-300 bg-slate-900/60

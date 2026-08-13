@@ -37,6 +37,22 @@ export class BooksController {
     return this.booksService.getBookById(id, req.user.id);
   }
 
+  /** Straight to a cursor — no wizard, no questions. */
+  @Post('blank')
+  async createBlank(@Request() req: any) {
+    return this.booksService.createBlankBook(req.user.id);
+  }
+
+  @Post(':bookId/draft')
+  @Throttle(AI_LIMIT)
+  async draftIntoBook(
+    @Param('bookId') bookId: string,
+    @Body() body: { topic: string; genre?: string; tone?: string; audience?: string; chaptersCount?: number },
+    @Request() req: any,
+  ) {
+    return this.booksService.draftIntoBook(bookId, req.user.id, body);
+  }
+
   @Post()
   async createBook(@Request() req: any, @Body() body: any) {
     return this.booksService.createBook(req.user.id, body);

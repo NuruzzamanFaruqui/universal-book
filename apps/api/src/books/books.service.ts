@@ -33,6 +33,99 @@ export class BooksService {
     });
   }
 
+  /**
+   * An empty book with one empty chapter, created without asking anything.
+   *
+   * Title, genre and tone stay blank on purpose — they are inferred from what
+   * gets written and confirmed at publish. Nothing should stand between
+   * "write a book" and a cursor.
+   */
+  async createBlankBook(userId: string) {
+    return this.prisma.book.create({
+      data: {
+        title: '',
+        genre: '',
+        tone: '',
+        language: 'English',
+        status: 'DRAFT',
+        userId,
+        chapters: { create: [{ number: 1, title: '', content: '' }] },
+      },
+      include: { chapters: { orderBy: { number: 'asc' } } },
+    });
+  }
+
+  /**
+   * Turns an existing book into an AI-drafted one: charges, builds an outline
+   * from a topic, and replaces any empty chapters with the outline's.
+   *
+   * Chapter bodies are written afterwards one at a time through the existing
+   * per-chapter endpoint, so the author watches progress instead of staring at
+   * a spinner for two minutes.
+   */
+  async draftIntoBook(bookId: string, userId: string, data: {
+    topic: string; genre?: string; tone?: string; audience?: string; chaptersCount?: number;
+  }) {
+    const book = await this.prisma.book.findFirst({
+      where: { id: bookId, userId },
+      include: { chapters: true },
+    });
+    if (!book) throw new NotFoundException('Book not found');
+
+    const written = book.chapters.filter((c) => (c.content || '').trim().length > 0);
+    if (written.length) {
+      throw new BadRequestException(
+        'This book already has writing in it. Start a new book to have AI draft one from scratch.',
+      );
+    }
+
+    await this.paymentsService.chargeForAiGeneration(userId);
+    let charged = true;
+
+    try {
+      const outline = await this.aiService.generateOutline(
+        data.topic,
+        data.genre || 'General',
+        data.tone || 'Engaging & Accessible',
+        data.audience || 'General readers',
+        Math.min(Math.max(data.chaptersCount || 8, 1), 30),
+      );
+
+      const updated = await this.prisma.$transaction(async (tx) => {
+        await tx.chapter.deleteMany({ where: { bookId } });
+        return tx.book.update({
+          where: { id: bookId },
+          data: {
+            title: outline.title || data.topic,
+            subtitle: outline.subtitle || null,
+            synopsis: outline.synopsis || null,
+            genre: data.genre || book.genre || '',
+            tone: data.tone || book.tone || 'Engaging & Accessible',
+            audience: data.audience || book.audience || 'General readers',
+            status: 'GENERATING',
+            chapters: {
+              create: (outline.chapters || []).map((ch: any, i: number) => ({
+                number: i + 1,
+                title: ch.title,
+                summary: ch.summary || ch.description || '',
+              })),
+            },
+          },
+          include: { chapters: { orderBy: { number: 'asc' } } },
+        });
+      });
+
+      charged = false;
+      return updated;
+    } finally {
+      if (charged) {
+        await this.paymentsService
+          .refundAiGeneration(userId, 'outline generation failed')
+          .catch((e) => this.logger.error(`Refund failed for ${userId}: ${e.message}`));
+      }
+    }
+  }
+
   async createBook(userId: string, data: {
     topic: string;
     genre: string;
