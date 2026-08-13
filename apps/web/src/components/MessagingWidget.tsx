@@ -1,12 +1,16 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
+import { usePathname } from 'next/navigation';
 import { MessageCircle, X, Send, ChevronDown, Edit, Minus } from 'lucide-react';
 import { getToken, onAuthChange, getStoredToken } from '@/lib/auth';
 import { subscribeToMessages, subscribeToPresence, ChatMessage, Unsubscribe } from '@/lib/realtime';
 import { API_URL, POLL } from '@/lib/config';
 
 export default function MessagingWidget() {
+  // The editor is a full-screen writing surface with its own right-hand panel;
+  // a floating chat bubble lands on top of it.
+  const pathname = usePathname();
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
   const [conversations, setConversations] = useState<any[]>([]);
@@ -200,6 +204,7 @@ export default function MessagingWidget() {
   const isOnline = (userId: string) => onlineLoaded && onlineUsers.has(userId);
 
   if (!isLoggedIn || !currentUser) return null;
+  if (pathname?.endsWith('/edit')) return null;
 
   return (
     <div className="fixed bottom-0 right-4 z-50 flex items-end gap-2">

@@ -222,6 +222,16 @@ export default function EditChapterPage() {
         <span className="ml-auto text-xs text-slate-400 tabular-nums shrink-0">
           {totalWords.toLocaleString()} words
         </span>
+        <Link href={`/books/${bookId}`} target="_blank"
+          className="hidden sm:block px-3 py-1.5 text-[12.5px] text-slate-300 hover:text-white
+                     border border-slate-600 hover:border-slate-500 rounded-lg transition shrink-0">
+          Preview
+        </Link>
+        <Link href={`/dashboard/books/${bookId}`}
+          className="px-3 py-1.5 text-[12.5px] font-semibold bg-blue-600 hover:bg-blue-500
+                     rounded-lg transition shrink-0">
+          Publish
+        </Link>
         <button onClick={() => setPanelOpen(p => !p)}
           className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg transition"
           title={panelOpen ? 'Hide assistant' : 'Show assistant'}>
@@ -295,7 +305,8 @@ export default function EditChapterPage() {
                 style={{ width: `${Math.min(100, (totalWords / 40000) * 100)}%` }} />
             </div>
             <p className="text-[10px] text-slate-500 mt-2 leading-relaxed">
-              {book.chapters?.length || 0} chapters · books in this genre usually run 35–50k words.
+              {grouped.chapters.length} {grouped.chapters.length === 1 ? 'chapter' : 'chapters'}
+              {book.genre ? ` · ${book.genre} books usually run 35–50k words.` : ' · most books run 35–50k words.'}
             </p>
           </div>
         </aside>

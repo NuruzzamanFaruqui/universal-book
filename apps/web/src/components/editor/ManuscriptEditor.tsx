@@ -427,8 +427,8 @@ export default function ManuscriptEditor({
       )}
 
       {/* the page */}
-      <div className="flex-1 overflow-y-auto bg-[#0A0F18] px-6 py-9">
-        <div className="max-w-[42rem] mx-auto bg-[#FDFCF9] rounded-sm shadow-[0_1px_3px_rgba(0,0,0,.5),0_18px_50px_rgba(0,0,0,.35)] px-[3.5rem] py-14 min-h-[60vh]">
+      <div className="flex-1 overflow-y-auto bg-[#0A0F18] px-6 pt-8">
+        <div className="max-w-[42rem] mx-auto bg-[#FDFCF9] rounded-sm shadow-[0_1px_3px_rgba(0,0,0,.5),0_18px_50px_rgba(0,0,0,.35)] px-[3.5rem] py-16 min-h-[calc(100vh-11rem)]">
           <EditorContent editor={editor} />
         </div>
         <div className="h-24" />
