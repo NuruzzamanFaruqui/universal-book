@@ -160,20 +160,18 @@ Stripe is on sandbox keys. Webhook: `/api/payments/webhook`.
 ### Security — act on these
 - **The database password is in git history** (commit `11c53ab` onward, public
   repo). `prisma.config.ts` no longer contains it, but history is unchanged.
-  **Rotate the Cloud SQL password.**
-- **H2** — `GET /api/groups/:id/messages` and `/api/groups/:id` have no auth
-  guard and ignore `isPublic`. Private group chat is public.
-- **H3** — `GET /api/admin/settings` returns Stripe and Anthropic keys unmasked.
+  **Rotate the Cloud SQL password.** Oldest open item.
 - Chapter HTML renders via `dangerouslySetInnerHTML` with no sanitising, and
-  chapter content can come from an uploaded manuscript.
+  chapter content can come from an uploaded manuscript. Sessions now carry a
+  refresh token in localStorage, so the payoff for an attacker is larger.
 
-### Payments — correctness
-- **H4** `_completePurchase` is ~10 writes with no `$transaction`
-- **H5** credit balances are read-modify-write → double-spendable
-- **H6** the Stripe webhook is not idempotent; retries double-credit
-- **H7** `publishBook` accepts a negative price, which mints credits
-
-`PrismaService` now extends `PrismaClient`, so `$transaction` is available.
+### Fixed — do not re-report
+Group reads are guarded and honour `isPublic`. Admin settings mask secrets and
+never write a mask back. Purchases run in one `$transaction`; credit movement is
+an atomic conditional `updateMany`; the Stripe webhook is idempotent via
+`ProcessedWebhookEvent` and checks `payment_status`; `publishBook` validates
+price through a DTO. Throttling is global at 120/min with AI endpoints at 10/min.
+DM reads verify participation. The auth guard shares one Prisma client.
 
 ### Other
 - AI model defaults to `claude-sonnet-4-20250514`, superseded by the Claude 5
