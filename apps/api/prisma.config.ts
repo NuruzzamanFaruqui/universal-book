@@ -6,16 +6,19 @@ import { defineConfig } from 'prisma/config'
 // .env by this point.
 loadEnv({ path: path.join(__dirname, '.env') })
 
+// Deliberately a warning rather than a throw: `prisma generate` never opens a
+// connection and runs during the Docker build, where no DATABASE_URL exists.
+// Commands that do need a connection fail on their own with a clear message.
 if (!process.env.DATABASE_URL) {
-  throw new Error(
-    'DATABASE_URL is not set. Add it to apps/api/.env (see .env.example) ' +
-    'or export it before running Prisma CLI commands.',
+  console.warn(
+    '[prisma.config] DATABASE_URL is not set. Codegen will still work; ' +
+    'anything touching the database will not. See apps/api/.env.example.',
   )
 }
 
 export default defineConfig({
   schema: path.join('prisma', 'schema.prisma'),
   datasource: {
-    url: process.env.DATABASE_URL,
+    url: process.env.DATABASE_URL ?? '',
   },
 })

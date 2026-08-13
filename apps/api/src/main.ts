@@ -24,12 +24,15 @@ async function bootstrap() {
     origin: [
       'https://universal-book.com',
       'https://www.universal-book.com',
+      'https://dev.universal-book.com',
       'https://universal-book-web-73444175926.us-central1.run.app',
       'https://universal-book-web-lkb47uauda-uc.a.run.app',
+      'https://universal-book-web-dev-73444175926.us-central1.run.app',
+      'https://universal-book-web-dev-lkb47uauda-uc.a.run.app',
       ...(process.env.NODE_ENV === 'production' ? [] : ['http://localhost:3000']),
     ],
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-    allowedHeaders: 'Content-Type,Authorization,Accept,X-Migration-Secret',
+    allowedHeaders: 'Content-Type,Authorization,Accept',
     credentials: true,
   });
 

@@ -2,7 +2,7 @@
 export const dynamic = 'force-dynamic';
 
 import { useEffect, useState } from 'react';
-import { Search, RefreshCw, BookOpen } from 'lucide-react';
+import { Search, RefreshCw, BookOpen, Star } from 'lucide-react';
 import { getToken as getFreshToken } from '@/lib/auth';
 import { API_URL } from '@/lib/config';
 
@@ -14,6 +14,10 @@ export default function AdminBooksPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
+  // bookId -> isFeatured, for books that are published. Unpublished books
+  // cannot be featured, so they simply don't appear in this map.
+  const [featured, setFeatured] = useState<Record<string, boolean>>({});
+  const [savingFeatured, setSavingFeatured] = useState<string | null>(null);
 
   useEffect(() => { fetchBooks(); }, []);
 
@@ -36,8 +40,38 @@ export default function AdminBooksPage() {
         setBooks(data);
         setFiltered(data);
       }
+
+      const pubRes = await fetch(`${API_URL}/api/admin/published-books`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (pubRes.ok) {
+        const published = await pubRes.json();
+        setFeatured(Object.fromEntries(
+          published.map((p: any) => [p.bookId, p.isFeatured])
+        ));
+      }
     } catch (e) {}
     finally { setLoading(false); }
+  };
+
+  const toggleFeatured = async (bookId: string) => {
+    const next = !featured[bookId];
+    setSavingFeatured(bookId);
+    // Optimistic — revert if the request fails.
+    setFeatured(prev => ({ ...prev, [bookId]: next }));
+    try {
+      const token = await getFreshToken();
+      const res = await fetch(`${API_URL}/api/admin/books/${bookId}/featured`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ isFeatured: next }),
+      });
+      if (!res.ok) setFeatured(prev => ({ ...prev, [bookId]: !next }));
+    } catch (e) {
+      setFeatured(prev => ({ ...prev, [bookId]: !next }));
+    } finally {
+      setSavingFeatured(null);
+    }
   };
 
   return (
@@ -55,6 +89,7 @@ export default function AdminBooksPage() {
       {/* Stats */}
       <div className="grid grid-cols-4 gap-4 mb-6">
         {[
+          { label: 'Featured', value: Object.values(featured).filter(Boolean).length },
           { label: 'Total', value: books.length },
           { label: 'Complete', value: books.filter(b => b.status === 'COMPLETE').length },
           { label: 'Generating', value: books.filter(b => b.status === 'GENERATING').length },
@@ -101,13 +136,14 @@ export default function AdminBooksPage() {
               <th className="text-left px-6 py-3 text-xs text-gray-400 uppercase tracking-wider">Chapters</th>
               <th className="text-left px-6 py-3 text-xs text-gray-400 uppercase tracking-wider">Status</th>
               <th className="text-left px-6 py-3 text-xs text-gray-400 uppercase tracking-wider">Created</th>
+              <th className="text-left px-6 py-3 text-xs text-gray-400 uppercase tracking-wider">Featured</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={5} className="px-6 py-8 text-center text-gray-400">Loading books...</td></tr>
+              <tr><td colSpan={6} className="px-6 py-8 text-center text-gray-400">Loading books...</td></tr>
             ) : filtered.length === 0 ? (
-              <tr><td colSpan={5} className="px-6 py-8 text-center text-gray-400">No books found</td></tr>
+              <tr><td colSpan={6} className="px-6 py-8 text-center text-gray-400">No books found</td></tr>
             ) : (
               filtered.map((book, i) => (
                 <tr key={i} className="border-b border-gray-800 hover:bg-gray-800/50 transition">
@@ -136,6 +172,27 @@ export default function AdminBooksPage() {
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-400">
                     {book.createdAt ? new Date(book.createdAt).toLocaleDateString() : 'N/A'}
+                  </td>
+                  <td className="px-6 py-4">
+                    {book.id in featured ? (
+                      <button
+                        onClick={() => toggleFeatured(book.id)}
+                        disabled={savingFeatured === book.id}
+                        title={featured[book.id] ? 'Remove from the homepage' : 'Show on the homepage'}
+                        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition disabled:opacity-50 ${
+                          featured[book.id]
+                            ? 'bg-amber-500/15 text-amber-400 hover:bg-amber-500/25'
+                            : 'bg-gray-800 text-gray-500 hover:text-gray-300'
+                        }`}
+                      >
+                        <Star size={13} fill={featured[book.id] ? 'currentColor' : 'none'} />
+                        {featured[book.id] ? 'Featured' : 'Feature'}
+                      </button>
+                    ) : (
+                      <span className="text-xs text-gray-600" title="Only published books can be featured">
+                        Not published
+                      </span>
+                    )}
                   </td>
                 </tr>
               ))

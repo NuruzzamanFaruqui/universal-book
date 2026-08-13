@@ -51,6 +51,24 @@ export class AdminController {
     return this.adminService.getAllBooks();
   }
 
+  // ─── Featured books ───────────────────────────────────────────────────────
+
+  @Get('published-books')
+  async getPublishedBooks(@Request() req) {
+    this.checkAdmin(req);
+    return this.adminService.getPublishedBooks();
+  }
+
+  @Put('books/:bookId/featured')
+  async setFeatured(
+    @Param('bookId') bookId: string,
+    @Body() body: { isFeatured: boolean },
+    @Request() req,
+  ) {
+    this.checkAdmin(req);
+    return this.adminService.setFeatured(bookId, !!body.isFeatured);
+  }
+
   @Get('settings')
   async getSettings(@Request() req) {
     this.checkAdmin(req);

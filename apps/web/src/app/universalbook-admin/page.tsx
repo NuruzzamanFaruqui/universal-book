@@ -2,14 +2,15 @@
 export const dynamic = 'force-dynamic';
 
 import { useEffect, useState } from 'react';
-import { Users, BookOpen, TrendingUp, Zap, RefreshCw } from 'lucide-react';
+import { Users, BookOpen, TrendingUp, Zap, RefreshCw, DollarSign, Wallet, Sparkles, ShoppingCart } from 'lucide-react';
 import { getToken as getFreshToken } from '@/lib/auth';
 import { API_URL } from '@/lib/config';
 
 
 
 export default function AdminDashboard() {
-  const [stats, setStats] = useState({ totalUsers: 0, totalBooks: 0, totalChapters: 0 });
+  const [stats, setStats] = useState<any>({ totalUsers: 0, totalBooks: 0, totalChapters: 0, publishedBooks: 0 });
+  const [revenue, setRevenue] = useState<any>(null);
   const [recentUsers, setRecentUsers] = useState<any[]>([]);
   const [recentBooks, setRecentBooks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -20,20 +21,26 @@ export default function AdminDashboard() {
     setLoading(true);
     try {
       const token = await getFreshToken();
-      const [usersRes, booksRes] = await Promise.all([
+      const [usersRes, booksRes, statsRes] = await Promise.all([
         fetch(`${API_URL}/api/admin/users`, { headers: { 'Authorization': `Bearer ${token}` } }),
         fetch(`${API_URL}/api/admin/books`, { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch(`${API_URL}/api/admin/stats`, { headers: { 'Authorization': `Bearer ${token}` } }),
       ]);
+      if (statsRes.ok) {
+        const s = await statsRes.json();
+        setRevenue(s.revenue);
+        setStats((prev: any) => ({ ...prev, publishedBooks: s.publishedBooks }));
+      }
       if (usersRes.ok) {
         const users = await usersRes.json();
         setRecentUsers(users.slice(0, 5));
-        setStats(prev => ({ ...prev, totalUsers: users.length }));
+        setStats((prev: any) => ({ ...prev, totalUsers: users.length }));
       }
       if (booksRes.ok) {
         const books = await booksRes.json();
         setRecentBooks(books.slice(0, 5));
         const chapters = books.reduce((acc: number, b: any) => acc + (b.chapters?.length || 0), 0);
-        setStats(prev => ({ ...prev, totalBooks: books.length, totalChapters: chapters }));
+        setStats((prev: any) => ({ ...prev, totalBooks: books.length, totalChapters: chapters }));
       }
     } catch (e) {}
     finally { setLoading(false); }
@@ -43,7 +50,7 @@ export default function AdminDashboard() {
     { label: 'Total Users', value: stats.totalUsers, icon: <Users className="text-blue-400" size={24} /> },
     { label: 'Total Books', value: stats.totalBooks, icon: <BookOpen className="text-green-400" size={24} /> },
     { label: 'Chapters Written', value: stats.totalChapters, icon: <TrendingUp className="text-purple-400" size={24} /> },
-    { label: 'AI Generations', value: stats.totalChapters, icon: <Zap className="text-yellow-400" size={24} /> },
+    { label: 'AI Books Generated', value: revenue?.aiGenerationCount ?? 0, icon: <Zap className="text-yellow-400" size={24} /> },
   ];
 
   return (
@@ -68,6 +75,48 @@ export default function AdminDashboard() {
             <div className="text-gray-400 text-sm">{card.label}</div>
           </div>
         ))}
+      </div>
+
+      {/* Revenue */}
+      <div className="mb-8">
+        <h2 className="text-lg font-semibold mb-1">Revenue</h2>
+        <p className="text-gray-500 text-xs mb-4">
+          Summed from recorded purchases and credit transactions, not recalculated from prices.
+        </p>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {[
+            { label: 'Platform revenue', value: revenue?.platformRevenue, icon: <DollarSign size={18} className="text-emerald-400" />, sub: `${revenue?.salesCount ?? 0} sales` },
+            { label: 'Gross sales', value: revenue?.grossSales, icon: <ShoppingCart size={18} className="text-blue-400" />, sub: `$${(revenue?.last30dGross ?? 0).toFixed(2)} last 30d` },
+            { label: 'AI generation income', value: revenue?.aiGenerationRevenue, icon: <Sparkles size={18} className="text-purple-400" />, sub: `${revenue?.aiGenerationCount ?? 0} books` },
+            { label: 'Credits purchased', value: revenue?.creditsPurchased, icon: <Wallet size={18} className="text-amber-400" />, sub: `${revenue?.topupCount ?? 0} top-ups` },
+          ].map((c, i) => (
+            <div key={i} className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+              <div className="flex items-center gap-2 mb-3">{c.icon}
+                <span className="text-gray-400 text-xs uppercase tracking-wide">{c.label}</span>
+              </div>
+              <div className="text-2xl font-bold tabular-nums">
+                {loading || !revenue ? '...' : `$${(c.value ?? 0).toFixed(2)}`}
+              </div>
+              <div className="text-gray-500 text-xs mt-1">{c.sub}</div>
+            </div>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-4">
+          {[
+            { label: 'Paid to authors', value: revenue?.paidToAuthors, hint: '70% of each sale' },
+            { label: 'Paid to affiliates', value: revenue?.paidToAffiliates, hint: "10% of the author's share" },
+            { label: 'Outstanding credit liability', value: revenue?.outstandingCreditLiability, hint: 'Unspent balances the platform still owes' },
+          ].map((c, i) => (
+            <div key={i} className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+              <div className="text-gray-400 text-xs uppercase tracking-wide mb-2">{c.label}</div>
+              <div className="text-xl font-bold tabular-nums">
+                {loading || !revenue ? '...' : `$${(c.value ?? 0).toFixed(2)}`}
+              </div>
+              <div className="text-gray-500 text-xs mt-1">{c.hint}</div>
+            </div>
+          ))}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

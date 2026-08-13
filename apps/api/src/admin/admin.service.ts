@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 
 @Injectable()
@@ -45,12 +45,104 @@ export class AdminService {
   }
 
   async getStats() {
-    const [totalUsers, totalBooks, totalChapters] = await Promise.all([
+    const since30d = new Date(Date.now() - 30 * 86_400_000);
+
+    const [
+      totalUsers,
+      totalBooks,
+      totalChapters,
+      publishedBooks,
+      allTime,
+      last30d,
+      aiSpend,
+      topups,
+      outstandingCredits,
+    ] = await Promise.all([
       this.prisma.user.count(),
       this.prisma.book.count(),
       this.prisma.chapter.count(),
+      this.prisma.publishedBook.count({ where: { isPublic: true } }),
+      // Every purchase already stores the split, so revenue is a sum, not a
+      // recalculation — the two can never drift apart.
+      this.prisma.bookPurchase.aggregate({
+        _sum: { amount: true, platformFee: true, writerEarning: true, affiliateFee: true },
+        _count: true,
+      }),
+      this.prisma.bookPurchase.aggregate({
+        _sum: { amount: true, platformFee: true },
+        _count: true,
+        where: { createdAt: { gte: since30d } },
+      }),
+      this.prisma.creditTransaction.aggregate({
+        _sum: { amount: true },
+        _count: true,
+        where: { type: 'AI_BOOK_GENERATION' },
+      }),
+      this.prisma.creditTransaction.aggregate({
+        _sum: { amount: true },
+        _count: true,
+        where: { type: 'TOPUP' },
+      }),
+      // What the platform still owes users, sitting in their balances.
+      this.prisma.user.aggregate({ _sum: { creditBalance: true } }),
     ]);
-    return { totalUsers, totalBooks, totalChapters };
+
+    const round = (n: number | null | undefined) => Math.round((n ?? 0) * 100) / 100;
+
+    return {
+      totalUsers,
+      totalBooks,
+      totalChapters,
+      publishedBooks,
+      revenue: {
+        grossSales: round(allTime._sum.amount),
+        platformRevenue: round(allTime._sum.platformFee),
+        paidToAuthors: round(allTime._sum.writerEarning),
+        paidToAffiliates: round(allTime._sum.affiliateFee),
+        salesCount: allTime._count,
+        last30dGross: round(last30d._sum.amount),
+        last30dPlatform: round(last30d._sum.platformFee),
+        last30dSalesCount: last30d._count,
+        // AI charges are stored negative; report the magnitude.
+        aiGenerationRevenue: round(Math.abs(aiSpend._sum.amount ?? 0)),
+        aiGenerationCount: aiSpend._count,
+        creditsPurchased: round(topups._sum.amount),
+        topupCount: topups._count,
+        outstandingCreditLiability: round(outstandingCredits._sum.creditBalance),
+      },
+    };
+  }
+
+  // ─── Featured books ───────────────────────────────────────────────────────
+  // `isFeatured` drives the homepage row. Until now nothing could set it, so
+  // that row was permanently empty.
+
+  async getPublishedBooks() {
+    return this.prisma.publishedBook.findMany({
+      include: {
+        book: {
+          select: {
+            id: true,
+            title: true,
+            genre: true,
+            coverUrl: true,
+            user: { select: { name: true, email: true } },
+          },
+        },
+      },
+      orderBy: [{ isFeatured: 'desc' }, { publishedAt: 'desc' }],
+    });
+  }
+
+  async setFeatured(bookId: string, isFeatured: boolean) {
+    const published = await this.prisma.publishedBook.findUnique({ where: { bookId } });
+    if (!published) throw new NotFoundException('That book is not published.');
+
+    return this.prisma.publishedBook.update({
+      where: { bookId },
+      data: { isFeatured },
+      select: { bookId: true, isFeatured: true },
+    });
   }
 
   async getSetting(key: string) {
