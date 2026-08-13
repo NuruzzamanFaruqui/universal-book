@@ -10,6 +10,60 @@ const countWords = (text: string) => (text.match(/\S+/g) || []).length;
 const escapeHtml = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
+/**
+ * The scaffolding every book gets on creation.
+ *
+ * A first-time author does not know a book needs a copyright page, so these are
+ * present from the start rather than waiting to be asked for. Each carries one
+ * line saying what belongs there, and every one can be deleted — not every book
+ * wants a foreword.
+ */
+const FRONT_MATTER: { slug: string; title: string; hint: string }[] = [
+  { slug: 'half-title', title: 'Half Title',
+    hint: 'Just the title, alone on a page. Traditional, and safe to delete.' },
+  { slug: 'title-page', title: 'Title Page',
+    hint: 'Title, subtitle and your name. Filled in from the book details.' },
+  { slug: 'copyright', title: 'Copyright',
+    hint: 'The legal page. Year, your name, rights reserved.' },
+  { slug: 'dedication', title: 'Dedication',
+    hint: 'One sentence, to someone who matters. Most authors write it last.' },
+  { slug: 'epigraph', title: 'Epigraph',
+    hint: 'A quotation that sets the tone. Optional.' },
+  { slug: 'contents', title: 'Contents',
+    hint: 'Built from your chapters and sections. Always current.' },
+  { slug: 'foreword', title: 'Foreword',
+    hint: 'Written by someone else, usually to lend credibility.' },
+  { slug: 'preface', title: 'Preface',
+    hint: 'Your own words on why you wrote this and who it is for.' },
+  { slug: 'introduction', title: 'Introduction',
+    hint: 'What the reader is about to get, and why it is worth their time.' },
+];
+
+const BACK_MATTER: { slug: string; title: string; hint: string }[] = [
+  { slug: 'conclusion', title: 'Conclusion',
+    hint: 'What you want the reader to leave with.' },
+  { slug: 'appendix', title: 'Appendix',
+    hint: 'Material that supports the book but would interrupt it.' },
+  { slug: 'glossary', title: 'Glossary',
+    hint: 'Terms your reader may not know.' },
+  { slug: 'bibliography', title: 'Bibliography',
+    hint: 'Sources and further reading.' },
+  { slug: 'about-the-author', title: 'About the Author',
+    hint: 'A short biography. Readers look for this before they buy.' },
+  { slug: 'acknowledgements', title: 'Acknowledgements',
+    hint: 'Thank the people who helped.' },
+];
+
+/** Fiction should never carry 1.1.1 headings; technical writing should. */
+const UNNUMBERED_GENRES = [
+  'fantasy', 'sci-fi', 'romance', 'thriller', 'mystery', 'horror',
+  'literary fiction', 'poetry',
+];
+export const numberingForGenre = (genre: string) =>
+  UNNUMBERED_GENRES.includes((genre || '').toLowerCase())
+    ? { numbering: 'NONE' as const, sectionDepth: 0 }
+    : { numbering: 'DECIMAL' as const, sectionDepth: 3 };
+
 @Injectable()
 export class BooksService {
   private readonly logger = new Logger(BooksService.name);
@@ -55,10 +109,60 @@ export class BooksService {
         language: 'English',
         status: 'DRAFT',
         userId,
-        chapters: { create: [{ number: 1, title: '', content: '' }] },
+        chapters: {
+          create: [
+            ...FRONT_MATTER.map((m, i) => ({
+              number: i + 1,
+              kind: 'FRONT_MATTER' as const,
+              slug: m.slug,
+              title: m.title,
+              summary: m.hint,
+              content: '',
+            })),
+            { number: 1, kind: 'CHAPTER' as const, title: '', content: '' },
+            ...BACK_MATTER.map((m, i) => ({
+              number: i + 1,
+              kind: 'BACK_MATTER' as const,
+              slug: m.slug,
+              title: m.title,
+              summary: m.hint,
+              content: '',
+            })),
+          ],
+        },
       },
       include: { chapters: { orderBy: { number: 'asc' } } },
     });
+  }
+
+  /**
+   * The Contents, derived rather than stored.
+   *
+   * Previously this was written once as an HTML snapshot and never updated, so
+   * it was wrong the moment a chapter was renamed. Now it is computed on read
+   * from the chapters and the headings inside them.
+   */
+  async buildContents(bookId: string) {
+    const book = await this.prisma.book.findUnique({
+      where: { id: bookId },
+      select: { numbering: true, sectionDepth: true },
+    });
+    const chapters = await this.prisma.chapter.findMany({
+      where: { bookId, kind: 'CHAPTER' },
+      orderBy: { number: 'asc' },
+      select: { id: true, number: true, title: true, subtitle: true, content: true },
+    });
+
+    const numbered = book?.numbering === 'DECIMAL';
+    const depth = book?.sectionDepth ?? 3;
+
+    return chapters.map((c) => ({
+      id: c.id,
+      number: c.number,
+      title: c.title || 'Untitled chapter',
+      subtitle: c.subtitle || null,
+      sections: depth > 0 ? headingsOf(c.content, c.number, depth, numbered) : [],
+    }));
   }
 
   /**
@@ -273,14 +377,20 @@ export class BooksService {
     });
   }
 
-  async renameChapter(bookId: string, chapterId: string, userId: string, title: string) {
+  async renameChapter(
+    bookId: string, chapterId: string, userId: string,
+    data: { title?: string; subtitle?: string },
+  ) {
     await this.assertCanEditBook(bookId, userId);
     const chapter = await this.prisma.chapter.findFirst({ where: { id: chapterId, bookId } });
     if (!chapter) throw new NotFoundException('Chapter not found');
 
     return this.prisma.chapter.update({
       where: { id: chapterId },
-      data: { title: title.trim().slice(0, 300) },
+      data: {
+        ...(data.title !== undefined && { title: data.title.trim().slice(0, 300) }),
+        ...(data.subtitle !== undefined && { subtitle: data.subtitle.trim().slice(0, 300) || null }),
+      },
     });
   }
 
@@ -381,6 +491,7 @@ export class BooksService {
   async updateBook(bookId: string, userId: string, data: {
     title?: string; subtitle?: string; genre?: string; tone?: string;
     audience?: string; synopsis?: string;
+    numbering?: 'NONE' | 'DECIMAL'; sectionDepth?: number;
   }) {
     const book = await this.prisma.book.findFirst({ where: { id: bookId, userId } });
     if (!book) throw new NotFoundException('Book not found');
@@ -394,6 +505,10 @@ export class BooksService {
         ...(data.tone !== undefined && { tone: data.tone }),
         ...(data.audience !== undefined && { audience: data.audience || null }),
         ...(data.synopsis !== undefined && { synopsis: data.synopsis || null }),
+        ...(data.numbering !== undefined && { numbering: data.numbering }),
+        ...(data.sectionDepth !== undefined && {
+          sectionDepth: Math.min(3, Math.max(0, data.sectionDepth)),
+        }),
       },
     });
   }
@@ -417,13 +532,17 @@ export class BooksService {
 
     const inferred = await this.aiService.inferMetadata(sample);
 
-    // Only fill blanks; never overwrite something the author chose.
+    // Only fill blanks; never overwrite something the author chose. Learning
+    // the genre also settles whether this book numbers its sections — 1.1.1 in
+    // a novel would be absurd.
+    const style = book.genre ? null : numberingForGenre(inferred.genre || '');
     await this.prisma.book.update({
       where: { id: bookId },
       data: {
         ...(book.genre ? {} : { genre: inferred.genre || '' }),
         ...(book.audience ? {} : { audience: inferred.audience || null }),
         ...(book.tone ? {} : { tone: inferred.tone || '' }),
+        ...(style ?? {}),
       },
     });
 
@@ -499,12 +618,6 @@ export class BooksService {
           '<p>No part of this book may be reproduced in any form without written permission ' +
           'from the author, except brief quotations in a review.</p>' +
           '<p>Published on Universal Book.</p>',
-      },
-      {
-        title: 'Contents',
-        content: chapters.length
-          ? `<ol>${chapters.map((c) => `<li>${escapeHtml(c.title || 'Untitled chapter')}</li>`).join('')}</ol>`
-          : '<p><em>Your chapters will be listed here as you write them.</em></p>',
       },
     ];
 
@@ -784,4 +897,36 @@ export class BooksService {
       cost: 5,
     };
   }
+}
+/**
+ * Pulls the headings out of a chapter body and numbers them by position.
+ *
+ * Numbers are derived, never stored — move a chapter and everything below
+ * renumbers itself with no migration and nothing to keep in sync.
+ */
+function headingsOf(html: string | null | undefined, chapterNumber: number, depth: number, numbered: boolean) {
+  const out: { level: number; label: string; title: string; id: string }[] = [];
+  if (!html) return out;
+
+  const counters = [0, 0, 0];
+  const re = /<h([234])(?:\s[^>]*?id="([^"]*)")?[^>]*>([\s\S]*?)<\/h\1>/gi;
+
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) {
+    const level = Number(m[1]) - 1;          // h2 → 1, h3 → 2, h4 → 3
+    if (level > depth) continue;
+
+    counters[level - 1] += 1;
+    for (let i = level; i < counters.length; i++) counters[i] = 0;
+
+    const title = m[3].replace(/<[^>]+>/g, '').trim();
+    if (!title) continue;
+
+    const label = numbered
+      ? [chapterNumber, ...counters.slice(0, level)].join('.')
+      : '';
+
+    out.push({ level, label, title, id: m[2] || '' });
+  }
+  return out;
 }

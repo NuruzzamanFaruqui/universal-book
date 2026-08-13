@@ -14,6 +14,10 @@ import { DictationHandle, isSupported as dictationSupported, startDictation } fr
 interface Props {
   bookId: string;
   chapterId: string;
+  /** Prefix for section numbers — 3 gives 3.1, 3.1.1. */
+  chapterNumber?: number;
+  /** 0 hides numbering entirely, as fiction should. */
+  sectionDepth?: number;
   initialContent?: string;
   bookTitle?: string;
   tone?: string;
@@ -32,6 +36,7 @@ interface Anchor { top: number; left: number; bottom: number }
 
 export default function ManuscriptEditor({
   bookId, chapterId, initialContent = '', bookTitle, tone, voiceSample,
+  chapterNumber = 1, sectionDepth = 3,
   onSave, onStats, readOnly = false, userId = '',
 }: Props) {
   const [saving, setSaving] = useState(false);
@@ -69,11 +74,11 @@ export default function ManuscriptEditor({
     immediatelyRender: false,
     editable: !readOnly,
     extensions: [
-      StarterKit.configure({ heading: { levels: [1, 2, 3] } }),
+      StarterKit.configure({ heading: { levels: [2, 3, 4] } }),
       Underline,
       Placeholder.configure({
         placeholder: ({ node }) =>
-          node.type.name === 'heading' ? 'Chapter title…' : "Start writing, or press / for help…",
+          node.type.name === 'heading' ? 'Section heading…' : "Start writing, or press / for help…",
       }),
     ],
     content: initialContent || '<p></p>',
@@ -312,6 +317,8 @@ export default function ManuscriptEditor({
     );
   }
 
+  const numbered = sectionDepth > 0;
+
   const btn = (label: string, active: boolean, fn: () => void, title?: string) => (
     <button
       key={label}
@@ -334,9 +341,18 @@ export default function ManuscriptEditor({
           color: #1b1b18;
         }
         .manuscript-body > * + * { margin-top: 1.1rem; }
-        .manuscript-body h1 { font-size: 1.95rem; line-height: 1.18; font-weight: 700; letter-spacing: -.015em; margin-top: 2rem; }
         .manuscript-body h2 { font-size: 1.4rem; line-height: 1.25; font-weight: 650; margin-top: 2rem; }
         .manuscript-body h3 { font-size: 1.15rem; font-weight: 650; margin-top: 1.6rem; }
+        .manuscript-body h4 { font-size: 1.02rem; font-weight: 650; margin-top: 1.35rem; }
+
+        /* Numbering is CSS counters, never stored — move a chapter or add a
+           section and every number below is right with nothing to migrate. */
+        .numbered .manuscript-body h2 { counter-increment: s2; counter-reset: s3 s4; }
+        .numbered .manuscript-body h3 { counter-increment: s3; counter-reset: s4; }
+        .numbered .manuscript-body h4 { counter-increment: s4; }
+        .numbered .manuscript-body h2::before { content: counter(ch) "." counter(s2) "  "; color: #9b978c; font-weight: 600; }
+        .numbered .manuscript-body h3::before { content: counter(ch) "." counter(s2) "." counter(s3) "  "; color: #9b978c; font-weight: 600; }
+        .numbered .manuscript-body h4::before { content: counter(ch) "." counter(s2) "." counter(s3) "." counter(s4) "  "; color: #9b978c; font-weight: 600; }
         .manuscript-body ul { list-style: disc; padding-left: 1.4rem; }
         .manuscript-body ol { list-style: decimal; padding-left: 1.4rem; }
         .manuscript-body li > p { margin: 0; }
@@ -359,10 +375,16 @@ export default function ManuscriptEditor({
           {btn('I', editor.isActive('italic'), () => editor.chain().focus().toggleItalic().run(), 'Italic')}
           {btn('U', editor.isActive('underline'), () => editor.chain().focus().toggleUnderline().run(), 'Underline')}
           <div className="w-px h-5 bg-slate-600 mx-1.5" />
-          {btn('H1', editor.isActive('heading', { level: 1 }), () => editor.chain().focus().toggleHeading({ level: 1 }).run(), 'Chapter title')}
-          {btn('H2', editor.isActive('heading', { level: 2 }), () => editor.chain().focus().toggleHeading({ level: 2 }).run(), 'Section')}
-          {btn('H3', editor.isActive('heading', { level: 3 }), () => editor.chain().focus().toggleHeading({ level: 3 }).run())}
-          {btn('¶', editor.isActive('paragraph'), () => editor.chain().focus().setParagraph().run(), 'Paragraph')}
+          {btn('Text', editor.isActive('paragraph'), () => editor.chain().focus().setParagraph().run(), 'Ordinary paragraph')}
+          {btn(numbered ? 'Section 1.1' : 'Section', editor.isActive('heading', { level: 2 }),
+            () => editor.chain().focus().toggleHeading({ level: 2 }).run(),
+            numbered ? 'A numbered section — 1.1' : 'A section heading')}
+          {sectionDepth >= 2 && btn(numbered ? 'Sub 1.1.1' : 'Subsection', editor.isActive('heading', { level: 3 }),
+            () => editor.chain().focus().toggleHeading({ level: 3 }).run(),
+            numbered ? 'A subsection — 1.1.1' : 'A subsection heading')}
+          {sectionDepth >= 3 && btn(numbered ? 'Sub 1.1.1.1' : 'Sub-sub', editor.isActive('heading', { level: 4 }),
+            () => editor.chain().focus().toggleHeading({ level: 4 }).run(),
+            numbered ? 'A sub-subsection — 1.1.1.1' : 'A sub-subsection heading')}
           <div className="w-px h-5 bg-slate-600 mx-1.5" />
           {btn('•', editor.isActive('bulletList'), () => editor.chain().focus().toggleBulletList().run(), 'Bullet list')}
           {btn('1.', editor.isActive('orderedList'), () => editor.chain().focus().toggleOrderedList().run(), 'Numbered list')}
@@ -429,7 +451,12 @@ export default function ManuscriptEditor({
       {/* the page */}
       <div className="flex-1 overflow-y-auto bg-[#0A0F18] px-6 pt-8">
         <div className="max-w-[42rem] mx-auto bg-[#FDFCF9] rounded-sm shadow-[0_1px_3px_rgba(0,0,0,.5),0_18px_50px_rgba(0,0,0,.35)] px-[3.5rem] py-16 min-h-[calc(100vh-11rem)]">
-          <EditorContent editor={editor} />
+          <div
+            className={numbered ? 'numbered' : undefined}
+            style={numbered ? ({ counterReset: `ch ${chapterNumber} s2 0 s3 0 s4 0` } as any) : undefined}
+          >
+            <EditorContent editor={editor} />
+          </div>
         </div>
         <div className="h-24" />
       </div>
@@ -483,8 +510,8 @@ export default function ManuscriptEditor({
           </button>
           <div className="px-2 py-1 mt-1 text-[10px] uppercase tracking-widest text-slate-500 font-mono">Insert</div>
           {[
-            { label: 'H  Chapter title', fn: () => editor.chain().focus().toggleHeading({ level: 1 }).run() },
-            { label: 'H  Section', fn: () => editor.chain().focus().toggleHeading({ level: 2 }).run() },
+            { label: `§  Section${numbered ? '  1.1' : ''}`, fn: () => editor.chain().focus().toggleHeading({ level: 2 }).run() },
+            { label: `§  Subsection${numbered ? '  1.1.1' : ''}`, fn: () => editor.chain().focus().toggleHeading({ level: 3 }).run() },
             { label: '❝  Quote', fn: () => editor.chain().focus().toggleBlockquote().run() },
             { label: '—  Divider', fn: () => editor.chain().focus().setHorizontalRule().run() },
           ].map(i => (

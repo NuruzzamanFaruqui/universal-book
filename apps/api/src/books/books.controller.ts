@@ -1,6 +1,6 @@
 import {
   Controller, Get, Post, Put, Delete,
-  Body, Param, Query, Request, UseGuards,
+  Body, Param, Query, Request, UseGuards, NotFoundException,
 } from '@nestjs/common';
 import { BooksService } from './books.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -120,6 +120,14 @@ export class BooksController {
     return this.booksService.updateBook(bookId, req.user.id, body);
   }
 
+  /** The Contents, derived from the manuscript on every read. */
+  @Get(':bookId/contents')
+  async contents(@Param('bookId') bookId: string, @Request() req: any) {
+    const book = await this.booksService.getBookById(bookId, req.user.id);
+    if (!book) throw new NotFoundException('Book not found');
+    return { chapters: await this.booksService.buildContents(bookId) };
+  }
+
   @Post(':bookId/infer')
   @Throttle(AI_LIMIT)
   async infer(@Param('bookId') bookId: string, @Request() req: any) {
@@ -161,10 +169,10 @@ export class BooksController {
   async renameChapter(
     @Param('bookId') bookId: string,
     @Param('chapterId') chapterId: string,
-    @Body() body: { title: string },
+    @Body() body: { title?: string; subtitle?: string },
     @Request() req: any,
   ) {
-    return this.booksService.renameChapter(bookId, chapterId, req.user.id, body.title ?? '');
+    return this.booksService.renameChapter(bookId, chapterId, req.user.id, body);
   }
 
   @Delete(':bookId/chapters/:chapterId')

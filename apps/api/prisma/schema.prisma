@@ -112,6 +112,9 @@ model Book {
   genre          String
   tone           String
   audience       String?
+  numbering      NumberingStyle  @default(DECIMAL)
+  // 0 = no numbered sections, 3 = down to 1.1.1
+  sectionDepth   Int             @default(3)
   language       String          @default("English")
   status         BookStatus      @default(DRAFT)
   coverUrl       String?
@@ -136,11 +139,22 @@ enum ChapterKind {
   BACK_MATTER
 }
 
+// How deep a book numbers its sections. Fiction numbers nothing; technical and
+// business books go three deep. Defaulted from the detected genre.
+enum NumberingStyle {
+  NONE
+  DECIMAL
+}
+
 model Chapter {
   id          String           @id @default(uuid())
   number      Int
   kind        ChapterKind      @default(CHAPTER)
+  // Identifies a specific front/back matter section — "contents", "dedication".
+  // Null for ordinary chapters.
+  slug        String?
   title       String
+  subtitle    String?
   summary     String?
   content     String?
   bookId      String
@@ -152,6 +166,7 @@ model Chapter {
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
 
+  @@unique([bookId, slug])
   @@index([bookId, kind, number])
 }
 

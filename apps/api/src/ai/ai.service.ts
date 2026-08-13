@@ -235,8 +235,8 @@ Writing Requirements:
 - Make it engaging and professional
 - End with a smooth transition if not the last chapter
 
-Format with proper headings using HTML:
-- Chapter title: <h1>
+Format with HTML. Do NOT repeat the chapter title — it is stored separately and
+shown above the text, so writing it again duplicates it on the page.
 - Sections: <h2>
 - Subsections: <h3>
 - Paragraphs: <p>

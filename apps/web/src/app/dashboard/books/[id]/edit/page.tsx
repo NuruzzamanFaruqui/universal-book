@@ -15,7 +15,7 @@ import { getToken as getFreshToken } from '@/lib/auth';
 import { API_URL } from '@/lib/config';
 import {
   describeShape, inferMetadata, reviewBook, generateMatter,
-  addChapter, renameChapter, deleteChapter, reorderChapters,
+  addChapter, renameChapter, deleteChapter, reorderChapters, fetchContents, ContentsEntry,
   ShapeReport, ReviewReport, BookMetadata,
 } from '@/lib/writing-ai';
 
@@ -56,6 +56,9 @@ export default function EditChapterPage() {
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState('');
   const [chapterBusy, setChapterBusy] = useState(false);
+  const [chapTitle, setChapTitle] = useState('');
+  const [chapSubtitle, setChapSubtitle] = useState('');
+  const [contents, setContents] = useState<ContentsEntry[]>([]);
 
   useEffect(() => { fetchData(); /* eslint-disable-next-line */ }, [bookId]);
 
@@ -84,6 +87,31 @@ export default function EditChapterPage() {
     } catch (e) { /* keep whatever is on screen */ }
     finally { setLoading(false); }
   };
+
+  useEffect(() => {
+    setChapTitle(selectedChapter?.title || '');
+    setChapSubtitle(selectedChapter?.subtitle || '');
+  }, [selectedChapter?.id, selectedChapter?.title, selectedChapter?.subtitle]);
+
+  // The Contents page is a live view, so it is fetched when opened rather than
+  // read from stored content.
+  useEffect(() => {
+    if (selectedChapter?.slug !== 'contents') return;
+    fetchContents(bookId).then(setContents).catch(() => setContents([]));
+  }, [bookId, selectedChapter?.slug, book?.chapters]);
+
+  const saveChapterHeading = useCallback(async (field: 'title' | 'subtitle', value: string) => {
+    if (!selectedChapter) return;
+    const current = selectedChapter[field] || '';
+    if (value.trim() === current) return;
+    await renameChapter(bookId, selectedChapter.id, { [field]: value.trim() });
+    setBook((b: any) => b && ({
+      ...b,
+      chapters: b.chapters.map((c: any) =>
+        c.id === selectedChapter.id ? { ...c, [field]: value.trim() } : c),
+    }));
+    setSelectedChapter((c: any) => c && ({ ...c, [field]: value.trim() }));
+  }, [bookId, selectedChapter]);
 
   const handleSave = useCallback(async (content: string) => {
     if (!selectedChapter) return;
@@ -158,7 +186,7 @@ export default function EditChapterPage() {
   const onRename = async (chapterId: string) => {
     const title = renameDraft.trim();
     setRenaming(null);
-    await withChapters(() => renameChapter(bookId, chapterId, title));
+    await withChapters(() => renameChapter(bookId, chapterId, { title }));
   };
 
   const onDelete = (chapterId: string, title: string) => {
@@ -348,13 +376,26 @@ export default function EditChapterPage() {
                           <span className={`font-mono text-[10px] shrink-0 ${on ? 'text-blue-400' : 'text-slate-600'}`}>
                             {isChapter ? c.number : '·'}
                           </span>
-                          <span className="truncate flex-1">{c.title || 'Untitled chapter'}</span>
+                          <span className={`truncate flex-1 ${
+                          !isChapter && !wordsIn(c.content) ? 'opacity-55' : ''
+                        }`}>{c.title || 'Untitled chapter'}</span>
                           {isChapter && (
                             <span className="font-mono text-[10px] text-slate-600 shrink-0">
                               {words ? (words > 999 ? `${(words / 1000).toFixed(1)}k` : words) : '—'}
                             </span>
                           )}
                         </button>
+
+                        {!isChapter && (
+                          <div className="flex items-center opacity-0 group-hover:opacity-100 focus-within:opacity-100
+                                          transition pr-1 shrink-0">
+                            <button onClick={() => onDelete(c.id, c.title)} disabled={chapterBusy}
+                              title="Remove this section"
+                              className="p-0.5 text-slate-500 hover:text-red-400 disabled:opacity-20">
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        )}
 
                         {isChapter && (
                           <div className="flex items-center opacity-0 group-hover:opacity-100 focus-within:opacity-100
@@ -402,9 +443,13 @@ export default function EditChapterPage() {
                 className="flex items-center gap-2 w-full text-left px-2.5 py-2 mt-2 rounded-lg text-[12px]
                            text-slate-500 hover:text-indigo-300 hover:bg-slate-700/40 transition disabled:opacity-50">
                 {matterBusy ? <Loader2 size={13} className="animate-spin" /> : <FileStack size={13} />}
-                {matterBusy ? 'Adding…' : 'Add title page & copyright'}
+                {matterBusy ? 'Adding…' : 'Add front & back matter'}
               </button>
             )}
+
+            <p className="px-2.5 pt-3 text-[10.5px] text-slate-600 leading-relaxed">
+              Faded sections are empty. Delete any your book does not need.
+            </p>
           </div>
 
           <div className="border-t border-slate-700/60 px-4 py-3">
@@ -425,19 +470,111 @@ export default function EditChapterPage() {
 
         {/* the page */}
         <main className="flex-1 min-w-0 flex flex-col">
-          {selectedChapter ? (
-            <ManuscriptEditor
-              key={selectedChapter.id}
-              bookId={bookId}
-              chapterId={selectedChapter.id}
-              initialContent={selectedChapter.content || ''}
-              bookTitle={book.title || 'Untitled book'}
-              tone={book.tone}
-              voiceSample={voiceSample}
-              userId={user?.id || ''}
-              onSave={handleSave}
-              onStats={s => setLiveWords(s.words)}
-            />
+          {selectedChapter?.slug === 'contents' ? (
+            <div className="flex-1 overflow-y-auto bg-[#0A0F18] px-6 pt-8">
+              <div className="max-w-[42rem] mx-auto bg-[#FDFCF9] text-[#1b1b18] rounded-sm
+                              shadow-[0_1px_3px_rgba(0,0,0,.5),0_18px_50px_rgba(0,0,0,.35)]
+                              px-[3.5rem] py-16 min-h-[calc(100vh-11rem)] font-serif">
+                <h1 className="text-[1.95rem] font-bold tracking-tight mb-1">Contents</h1>
+                <p className="text-[13px] text-[#8a8880] mb-8 font-sans">
+                  Built from your chapters and sections. Always current — there is nothing to edit here.
+                </p>
+                {contents.length === 0 ? (
+                  <p className="text-[#55544e] italic">
+                    Your chapters will appear here as you write them.
+                  </p>
+                ) : (
+                  <ol className="space-y-3 list-none p-0">
+                    {contents.map(c => (
+                      <li key={c.id}>
+                        <button onClick={() => {
+                            const target = book.chapters.find((x: any) => x.id === c.id);
+                            if (target) setSelectedChapter(target);
+                          }}
+                          className="text-left w-full hover:underline decoration-[#c9c5b8] underline-offset-4">
+                          <span className="font-semibold">{c.number}. {c.title}</span>
+                          {c.subtitle && (
+                            <span className="text-[#55544e] italic"> — {c.subtitle}</span>
+                          )}
+                        </button>
+                        {c.sections.length > 0 && (
+                          <ul className="mt-1.5 space-y-1 list-none p-0">
+                            {c.sections.map((sec, i) => (
+                              <li key={i} className="text-[.95rem] text-[#55544e]"
+                                  style={{ paddingLeft: `${sec.level * 1.4}rem` }}>
+                                {sec.label && (
+                                  <span className="text-[#9b978c] font-semibold mr-2">{sec.label}</span>
+                                )}
+                                {sec.title}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </div>
+              <div className="h-24" />
+            </div>
+          ) : selectedChapter ? (
+            <>
+              {/* Title and subtitle are fields, not markup — the body never
+                  repeats them, so nothing appears twice on the page. */}
+              <div className="bg-slate-800/60 border-b border-slate-700 px-6 py-3 shrink-0">
+                <div className="max-w-[42rem] mx-auto space-y-1.5">
+                  <div className="flex items-baseline gap-2">
+                    {selectedChapter.kind === 'CHAPTER' && (
+                      <span className="font-mono text-[11px] text-slate-500 shrink-0 pt-0.5">
+                        Chapter {selectedChapter.number}
+                      </span>
+                    )}
+                    <input
+                      value={chapTitle}
+                      onChange={e => setChapTitle(e.target.value)}
+                      onBlur={() => saveChapterHeading('title', chapTitle)}
+                      onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                      placeholder={selectedChapter.kind === 'CHAPTER' ? 'Chapter title' : 'Section title'}
+                      aria-label="Chapter title"
+                      className="flex-1 bg-transparent text-[17px] font-semibold text-white
+                                 placeholder-slate-600 border-b border-transparent hover:border-slate-600
+                                 focus:border-blue-500 focus:outline-none pb-0.5 transition-colors"
+                    />
+                  </div>
+                  {selectedChapter.kind === 'CHAPTER' && (
+                    <input
+                      value={chapSubtitle}
+                      onChange={e => setChapSubtitle(e.target.value)}
+                      onBlur={() => saveChapterHeading('subtitle', chapSubtitle)}
+                      onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                      placeholder="Subtitle — optional"
+                      aria-label="Chapter subtitle"
+                      className="w-full bg-transparent text-[13px] text-slate-400 italic
+                                 placeholder-slate-600 border-b border-transparent hover:border-slate-700
+                                 focus:border-blue-500 focus:outline-none pb-0.5 transition-colors"
+                    />
+                  )}
+                  {selectedChapter.kind !== 'CHAPTER' && selectedChapter.summary && (
+                    <p className="text-[12px] text-slate-500 leading-relaxed">{selectedChapter.summary}</p>
+                  )}
+                </div>
+              </div>
+
+              <ManuscriptEditor
+                key={selectedChapter.id}
+                bookId={bookId}
+                chapterId={selectedChapter.id}
+                initialContent={selectedChapter.content || ''}
+                bookTitle={book.title || 'Untitled book'}
+                tone={book.tone}
+                voiceSample={voiceSample}
+                userId={user?.id || ''}
+                chapterNumber={selectedChapter.number}
+                sectionDepth={selectedChapter.kind === 'CHAPTER' ? (book.sectionDepth ?? 3) : 0}
+                onSave={handleSave}
+                onStats={s => setLiveWords(s.words)}
+              />
+            </>
           ) : (
             <div className="flex-1 flex items-center justify-center text-slate-500 text-sm">
               This book has no chapters yet.

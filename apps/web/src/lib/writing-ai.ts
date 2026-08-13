@@ -124,8 +124,25 @@ async function send<T>(path: string, method: string, body?: unknown): Promise<T>
 export const addChapter = (bookId: string, afterId?: string) =>
   send<any>(`/api/books/${bookId}/chapters`, 'POST', { afterId });
 
-export const renameChapter = (bookId: string, chapterId: string, title: string) =>
-  send<any>(`/api/books/${bookId}/chapters/${chapterId}/title`, 'PUT', { title });
+export const renameChapter = (
+  bookId: string, chapterId: string, data: { title?: string; subtitle?: string },
+) => send<any>(`/api/books/${bookId}/chapters/${chapterId}/title`, 'PUT', data);
+
+export interface ContentsEntry {
+  id: string;
+  number: number;
+  title: string;
+  subtitle: string | null;
+  sections: { level: number; label: string; title: string; id: string }[];
+}
+
+/** The Contents, derived from the manuscript rather than stored. */
+export async function fetchContents(bookId: string): Promise<ContentsEntry[]> {
+  const headers = await authHeader();
+  const res = await fetch(`${API_URL}/api/books/${bookId}/contents`, { headers });
+  if (!res.ok) return [];
+  return (await res.json()).chapters ?? [];
+}
 
 export const deleteChapter = (bookId: string, chapterId: string) =>
   send<any>(`/api/books/${bookId}/chapters/${chapterId}`, 'DELETE');
