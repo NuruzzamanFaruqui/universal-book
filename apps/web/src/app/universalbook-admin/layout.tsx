@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { BookOpen, Users, LayoutDashboard, Settings, BookMarked, LogOut, Shield, ChevronRight } from 'lucide-react';
+import { BookOpen, Users, LayoutDashboard, Settings, BookMarked, LogOut, Shield, ChevronRight, KeyRound } from 'lucide-react';
 import { fetchMe, logout } from '@/lib/auth';
 
 const ADMIN_EMAILS = ['faruqui.swe@diu.edu.bd', 'levin.kuhlmann@monash.edu'];
@@ -73,6 +73,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { href: '/universalbook-admin/users', label: 'Users', icon: <Users size={18} /> },
     { href: '/universalbook-admin/books', label: 'Books', icon: <BookMarked size={18} /> },
     { href: '/universalbook-admin/team', label: 'Team & Roles', icon: <Shield size={18} /> },
+    { href: '/universalbook-admin/api-management', label: 'API Management', icon: <KeyRound size={18} /> },
     { href: '/universalbook-admin/settings', label: 'Settings', icon: <Settings size={18} /> },
   ];
 

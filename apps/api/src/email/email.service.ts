@@ -1,77 +1,114 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as nodemailer from 'nodemailer';
 import { Resend } from 'resend';
-
-const APP_URL = process.env.APP_URL || 'https://universal-book.com';
-const FROM = process.env.EMAIL_FROM || 'Universal Book <noreply@universal-book.com>';
+import { RuntimeConfigService } from '../config/runtime-config.service';
 
 type Transport = 'smtp' | 'resend' | 'console';
 
 /**
  * Sends transactional mail through whichever transport is configured.
  *
- * SMTP wins if SMTP_HOST is set, so any mailbox you already own works —
- * Namecheap Private Email, Google Workspace, a VPS relay. Resend is a fallback
- * for when no SMTP route is available. With neither, mail is logged rather than
- * sent, which is fine locally and a silent lockout in production.
+ * SMTP wins when SMTP_HOST is set, so any mailbox you already own works.
+ * Resend is the fallback. With neither, mail is logged rather than sent —
+ * fine locally, a silent lockout in production.
  *
- * Note for Cloud Run: GCP blocks outbound port 25 outright, and default egress
- * usually blocks 465/587 as well — SMTP from Cloud Run generally needs a
- * Serverless VPC connector with Cloud NAT. Resend goes over HTTPS and does not.
+ * Everything resolves through RuntimeConfigService rather than process.env, so
+ * keys entered in Admin → API Management take effect without a redeploy.
+ *
+ * Note for Cloud Run: GCP blocks outbound port 25 outright and usually 465/587
+ * as well, so SMTP generally needs a Serverless VPC connector with Cloud NAT.
+ * Resend goes over HTTPS and does not.
  */
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
-  private readonly transport: Transport;
-  private readonly smtp: nodemailer.Transporter | null = null;
-  private readonly resend: Resend | null = null;
+  private smtp: nodemailer.Transporter | null = null;
+  private smtpKey = '';
+  private resend: Resend | null = null;
+  private resendKey = '';
 
-  constructor() {
-    if (process.env.SMTP_HOST) {
-      const port = Number(process.env.SMTP_PORT || 587);
-      this.smtp = nodemailer.createTransport({
-        host: process.env.SMTP_HOST,
-        port,
-        // 465 is implicit TLS; 587 upgrades via STARTTLS.
-        secure: port === 465,
-        auth: process.env.SMTP_USER
-          ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASSWORD }
-          : undefined,
-        connectionTimeout: 10_000,
-        greetingTimeout: 10_000,
-      });
-      this.transport = 'smtp';
-      this.logger.log(`Email transport: SMTP via ${process.env.SMTP_HOST}:${port}`);
-    } else if (process.env.RESEND_API_KEY) {
-      this.resend = new Resend(process.env.RESEND_API_KEY);
-      this.transport = 'resend';
-      this.logger.log('Email transport: Resend');
-    } else {
-      this.transport = 'console';
-      this.logger.warn(
-        'No SMTP_HOST and no RESEND_API_KEY — emails will be logged, not sent. ' +
-        'Password reset will not work for real users.',
-      );
+  constructor(private config: RuntimeConfigService) {}
+
+  private async transport(): Promise<{ kind: Transport; smtp?: nodemailer.Transporter; resend?: Resend }> {
+    const host = await this.config.get('SMTP_HOST');
+    if (host) {
+      const port = Number((await this.config.get('SMTP_PORT')) || 587);
+      const user = await this.config.get('SMTP_USER');
+      const pass = await this.config.get('SMTP_PASSWORD');
+      const fingerprint = `${host}:${port}:${user ?? ''}`;
+      if (!this.smtp || this.smtpKey !== fingerprint) {
+        this.smtp = nodemailer.createTransport({
+          host,
+          port,
+          // 465 is implicit TLS; 587 upgrades via STARTTLS.
+          secure: port === 465,
+          auth: user ? { user, pass } : undefined,
+          connectionTimeout: 10_000,
+          greetingTimeout: 10_000,
+        });
+        this.smtpKey = fingerprint;
+      }
+      return { kind: 'smtp', smtp: this.smtp };
     }
+
+    const key = await this.config.get('RESEND_API_KEY');
+    if (key) {
+      if (!this.resend || this.resendKey !== key) {
+        this.resend = new Resend(key);
+        this.resendKey = key;
+      }
+      return { kind: 'resend', resend: this.resend };
+    }
+
+    return { kind: 'console' };
   }
 
+  /** Whether mail can actually be delivered. Not user-specific, so exposing
+   *  this leaks nothing about which accounts exist. */
+  async isConfigured(): Promise<boolean> {
+    return (await this.transport()).kind !== 'console';
+  }
+
+  /** Opens and authenticates the connection without sending. */
+  async verify(): Promise<{ transport: Transport; ok: boolean; error?: string }> {
+    const t = await this.transport();
+    if (t.kind === 'console') return { transport: 'console', ok: false, error: 'No transport configured.' };
+    if (t.kind === 'smtp') {
+      try {
+        await t.smtp!.verify();
+        return { transport: 'smtp', ok: true };
+      } catch (err: any) {
+        return { transport: 'smtp', ok: false, error: err?.message ?? String(err) };
+      }
+    }
+    return { transport: 'resend', ok: true };
+  }
+
+  private async from(): Promise<string> {
+    return (await this.config.get('EMAIL_FROM')) || 'Universal Book <noreply@universal-book.com>';
+  }
+
+  private async appUrl(): Promise<string> {
+    return (await this.config.get('APP_URL')) || 'https://universal-book.com';
+  }
 
   // ─── Transport ────────────────────────────────────────────────────────────
 
   /**
    * Never throws. A failed email must not fail the request that triggered it —
    * password reset returns the same response whether or not delivery worked, so
-   * that the endpoint can't be used to enumerate registered addresses.
+   * the endpoint cannot be used to enumerate registered addresses.
    */
   private async send(to: string, subject: string, html: string): Promise<boolean> {
     try {
-      if (this.transport === 'console') {
-        // Never log the body: these messages carry single-use reset links, and
-        // anyone with log access could redeem one. Outside development, report
-        // failure so callers do not claim mail was sent.
+      const t = await this.transport();
+
+      if (t.kind === 'console') {
+        // Never log the body: these carry single-use reset links, and anyone
+        // with log access could redeem one.
         this.logger.warn(
           `No email transport configured — dropping "${subject}" to ${to}. ` +
-          'Set SMTP_HOST or RESEND_API_KEY.',
+          'Set SMTP or Resend in Admin → API Management.',
         );
         if (process.env.NODE_ENV !== 'production') {
           this.logger.debug(`[dev] link for ${to}: ${this.firstLink(html) ?? '(none)'}`);
@@ -79,12 +116,14 @@ export class EmailService {
         return process.env.NODE_ENV !== 'production';
       }
 
-      if (this.transport === 'smtp') {
-        await this.smtp!.sendMail({ from: FROM, to, subject, html });
+      const from = await this.from();
+
+      if (t.kind === 'smtp') {
+        await t.smtp!.sendMail({ from, to, subject, html });
         return true;
       }
 
-      const { error } = await this.resend!.emails.send({ from: FROM, to, subject, html });
+      const { error } = await t.resend!.emails.send({ from, to, subject, html });
       if (error) {
         this.logger.error(`Resend rejected mail to ${to}: ${error.message}`);
         return false;
@@ -94,12 +133,6 @@ export class EmailService {
       this.logger.error(`Failed sending mail to ${to}: ${err?.message ?? err}`);
       return false;
     }
-  }
-
-  /** Whether mail can actually be delivered. Not user-specific, so exposing it
-   *  leaks nothing about which accounts exist. */
-  get isConfigured(): boolean {
-    return this.transport !== 'console';
   }
 
   /** Pulls the action URL out of a rendered email, for local development only. */
@@ -148,7 +181,7 @@ export class EmailService {
   // ─── Messages ─────────────────────────────────────────────────────────────
 
   async sendPasswordReset(to: string, name: string | null, token: string) {
-    const url = `${APP_URL}/auth/reset-password?token=${encodeURIComponent(token)}`;
+    const url = `${await this.appUrl()}/auth/reset-password?token=${encodeURIComponent(token)}`;
     return this.send(
       to,
       'Reset your Universal Book password',
@@ -163,7 +196,7 @@ export class EmailService {
   }
 
   async sendEmailVerification(to: string, name: string | null, token: string) {
-    const url = `${APP_URL}/auth/verify-email?token=${encodeURIComponent(token)}`;
+    const url = `${await this.appUrl()}/auth/verify-email?token=${encodeURIComponent(token)}`;
     return this.send(
       to,
       'Confirm your email address',

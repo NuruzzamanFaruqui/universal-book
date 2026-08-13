@@ -69,6 +69,26 @@ export class AdminController {
     return this.adminService.setFeatured(bookId, !!body.isFeatured);
   }
 
+  // ─── API Management ───────────────────────────────────────────────────────
+
+  @Get('api-keys')
+  async getApiKeys(@Request() req) {
+    this.checkAdmin(req);
+    return this.adminService.getApiKeys();
+  }
+
+  @Put('api-keys')
+  async saveApiKeys(@Body() body: Record<string, string>, @Request() req) {
+    this.checkAdmin(req);
+    return this.adminService.saveApiKeys(body);
+  }
+
+  @Post('api-keys/test/:group')
+  async testApiKey(@Param('group') group: string, @Request() req) {
+    this.checkAdmin(req);
+    return this.adminService.testApiKey(group);
+  }
+
   @Get('settings')
   async getSettings(@Request() req) {
     this.checkAdmin(req);

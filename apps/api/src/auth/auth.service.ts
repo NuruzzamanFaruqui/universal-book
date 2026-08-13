@@ -181,7 +181,7 @@ export class AuthService {
     // Whether a transport exists is a property of the deployment, not of the
     // address, so saying so leaks nothing — and it beats claiming to have sent
     // mail that cannot arrive.
-    if (!this.email.isConfigured) {
+    if (!(await this.email.isConfigured())) {
       this.logger.error('Password reset requested but no email transport is configured.');
       throw new ServiceUnavailableException(
         'Password reset is unavailable right now. Please contact support.',

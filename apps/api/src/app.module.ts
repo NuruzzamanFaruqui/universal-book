@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { PrismaModule } from './prisma.module';
+import { RuntimeConfigModule } from './config/runtime-config.module';
 import { EmailModule } from './email/email.module';
 import { AuthModule } from './auth/auth.module';
 import { BooksModule } from './books/books.module';
@@ -23,6 +24,7 @@ import { SocialModule } from './social/social.module';
     // call and previously had no limit of any kind.
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 120 }]),
     PrismaModule,
+    RuntimeConfigModule,
     EmailModule,
     AuthModule,
     BooksModule,

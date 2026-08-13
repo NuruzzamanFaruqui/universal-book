@@ -1,19 +1,71 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, ServiceUnavailableException } from '@nestjs/common';
 import Anthropic from '@anthropic-ai/sdk';
+import { RuntimeConfigService } from '../config/runtime-config.service';
+
+const DEFAULT_MODEL = 'claude-sonnet-4-20250514';
 
 @Injectable()
 export class AiService {
-  private client: Anthropic;
+  private client: Anthropic | null = null;
+  private clientKey: string | null = null;
 
-  constructor() {
-    this.client = new Anthropic({
-      apiKey: process.env.ANTHROPIC_API_KEY,
-    });
+  constructor(private config: RuntimeConfigService) {}
+
+  /**
+   * Built on demand rather than in the constructor, so a key entered in
+   * Admin → API Management takes effect without a redeploy.
+   */
+  private async anthropic(): Promise<Anthropic> {
+    const key = await this.config.get('ANTHROPIC_API_KEY');
+    if (!key) {
+      throw new ServiceUnavailableException(
+        'AI is not configured. Add an Anthropic API key in Admin → API Management.',
+      );
+    }
+    if (!this.client || this.clientKey !== key) {
+      this.client = new Anthropic({ apiKey: key });
+      this.clientKey = key;
+    }
+    return this.client;
+  }
+
+  private async model(): Promise<string> {
+    return (await this.config.get('AI_MODEL')) || DEFAULT_MODEL;
+  }
+
+  /** Text out of a response, tolerating non-text blocks. */
+  private text(message: any): string {
+    const block = (message.content || []).find((b: any) => b.type === 'text');
+    if (!block) throw new Error('The model returned no text.');
+    return block.text as string;
+  }
+
+  /**
+   * Parses JSON out of a model response. Previously five call sites did
+   * `JSON.parse(raw)` with no guard, so a truncated or prose-wrapped reply was
+   * an unhandled 500 in the middle of the wizard.
+   */
+  private parseJson<T>(raw: string, what: string): T {
+    const cleaned = raw.replace(/```json|```/g, '').trim();
+    try {
+      return JSON.parse(cleaned) as T;
+    } catch {
+      const start = cleaned.search(/[[{]/);
+      const end = Math.max(cleaned.lastIndexOf(']'), cleaned.lastIndexOf('}'));
+      if (start !== -1 && end > start) {
+        try {
+          return JSON.parse(cleaned.slice(start, end + 1)) as T;
+        } catch { /* fall through */ }
+      }
+      throw new ServiceUnavailableException(
+        `The AI response for ${what} could not be read. Please try again.`,
+      );
+    }
   }
 
   async generateTitles(topic: string, description: string, genre: string, tone: string): Promise<any> {
-    const message = await this.client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+    const message = await (await this.anthropic()).messages.create({
+      model: await this.model(),
       max_tokens: 1000,
       messages: [{
         role: 'user',
@@ -36,14 +88,12 @@ Make titles compelling, memorable, and marketable. No extra text.`
       }],
     });
 
-    const text = (message.content[0] as any).text;
-    const clean = text.replace(/```json|```/g, '').trim();
-    return { titles: JSON.parse(clean) };
+    return { titles: this.parseJson(this.text(message), 'title options') };
   }
 
   async generateOutlines(topic: string, description: string, genre: string, tone: string, audience: string, title: string, chaptersCount: number): Promise<any> {
-    const message = await this.client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+    const message = await (await this.anthropic()).messages.create({
+      model: await this.model(),
       max_tokens: 3000,
       messages: [{
         role: 'user',
@@ -77,16 +127,14 @@ No extra text outside JSON.`
       }],
     });
 
-    const text = (message.content[0] as any).text;
-    const clean = text.replace(/```json|```/g, '').trim();
-    return { outlines: JSON.parse(clean) };
+    return { outlines: this.parseJson(this.text(message), 'outlines') };
   }
 
   async generateSynopses(topic: string, title: string, genre: string, tone: string, audience: string, outline: any): Promise<any> {
     const chapterList = outline?.chapters?.map((c: any, i: number) => `${i+1}. ${c.title}`).join('\n') || '';
 
-    const message = await this.client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+    const message = await (await this.anthropic()).messages.create({
+      model: await this.model(),
       max_tokens: 1500,
       messages: [{
         role: 'user',
@@ -107,14 +155,12 @@ No extra text outside JSON.`
       }],
     });
 
-    const text = (message.content[0] as any).text;
-    const clean = text.replace(/```json|```/g, '').trim();
-    return { synopses: JSON.parse(clean) };
+    return { synopses: this.parseJson(this.text(message), 'synopses') };
   }
 
   async generateOutline(topic: string, genre: string, tone: string, audience: string, chaptersCount: number): Promise<any> {
-    const message = await this.client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+    const message = await (await this.anthropic()).messages.create({
+      model: await this.model(),
       max_tokens: 2000,
       messages: [{
         role: 'user',
@@ -143,9 +189,7 @@ No extra text.`
       }],
     });
 
-    const text = (message.content[0] as any).text;
-    const clean = text.replace(/```json|```/g, '').trim();
-    return JSON.parse(clean);
+    return this.parseJson(this.text(message), 'the outline');
   }
 
   async generateChapterContent(
@@ -168,8 +212,8 @@ No extra text.`
       ? `\nPrevious chapter summary: ${previousChapterSummary}`
       : '';
 
-    const message = await this.client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+    const message = await (await this.anthropic()).messages.create({
+      model: await this.model(),
       max_tokens: 4000,
       messages: [{
         role: 'user',
@@ -203,12 +247,77 @@ Write the full chapter now:`
       }],
     });
 
-    return (message.content[0] as any).text;
+    return this.text(message);
+  }
+
+  // ─── Writing assistance ───────────────────────────────────────────────────
+
+  /**
+   * Acts on a selection from the editor. Returns prose only — no preamble, no
+   * quotes — because the result is substituted directly into the document.
+   */
+  async assist(action: string, text: string, context?: { bookTitle?: string; tone?: string; voiceSample?: string }): Promise<string> {
+    const instructions: Record<string, string> = {
+      tighten: 'Cut it to its essentials. Same meaning, fewer words, no loss of specificity.',
+      expand: 'Develop it one step further with a concrete detail or consequence. Two or three sentences at most.',
+      concrete: 'Replace abstractions with specifics — a number, a named example, an observable situation.',
+      simplify: 'Rewrite so a reader outside the field follows it, without patronising them.',
+      voice: "Rewrite it to match the author's own voice, using the sample below as the reference.",
+      continue: 'Continue from where this stops. Match the voice and register exactly. Two or three sentences.',
+    };
+
+    const instruction = instructions[action];
+    if (!instruction) throw new BadRequestException(`Unknown action "${action}".`);
+
+    const message = await (await this.anthropic()).messages.create({
+      model: await this.model(),
+      max_tokens: 1200,
+      system:
+        'You are editing a passage inside a book. Reply with the replacement prose and nothing ' +
+        'else — no explanation, no quotation marks, no markdown fences. Preserve any HTML tags ' +
+        'that were present. Never invent facts the author has not written.',
+      messages: [{
+        role: 'user',
+        content: `Book: ${context?.bookTitle || 'Untitled'}
+Tone: ${context?.tone || 'as written'}
+Task: ${instruction}
+${context?.voiceSample ? `\nThe author's voice, for reference:\n"""${context.voiceSample.slice(0, 1500)}"""\n` : ''}
+Passage:
+"""${text}"""`,
+      }],
+    });
+
+    return this.text(message).trim();
+  }
+
+  /**
+   * Reads the whole manuscript and reflects its structure back — the outline as
+   * a mirror of what exists rather than a plan to obey.
+   */
+  async describeShape(title: string, chapters: { number: number; title: string; words: number; excerpt: string }[]) {
+    const message = await (await this.anthropic()).messages.create({
+      model: await this.model(),
+      max_tokens: 1200,
+      messages: [{
+        role: 'user',
+        content: `Here is a book in progress, titled "${title}".
+
+${chapters.map(c => `Chapter ${c.number}: ${c.title} (${c.words} words)\n${c.excerpt.slice(0, 600)}`).join('\n\n')}
+
+Return ONLY JSON:
+{
+  "summary": "Two sentences on what this book currently is.",
+  "gaps": ["Something promised and not delivered, or missing for a reader"],
+  "suggestedNext": { "title": "Chapter title", "why": "One sentence" }
+}`,
+      }],
+    });
+    return this.parseJson(this.text(message), 'the book shape');
   }
 
   async importAndParseBook(content: string, fileName: string, title: string, genre: string): Promise<any> {
-    const message = await this.client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+    const message = await (await this.anthropic()).messages.create({
+      model: await this.model(),
       max_tokens: 4000,
       messages: [{
         role: 'user',
@@ -239,8 +348,6 @@ No extra text outside JSON.`
       }],
     });
 
-    const text = (message.content[0] as any).text;
-    const clean = text.replace(/```json|```/g, '').trim();
-    return JSON.parse(clean);
+    return this.parseJson(this.text(message), 'the imported manuscript');
   }
 }

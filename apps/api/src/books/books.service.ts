@@ -326,6 +326,27 @@ export class BooksService {
     return book;
   }
 
+  /** Feeds the manuscript to the AI and returns its read of the structure. */
+  async describeShape(bookId: string, userId: string) {
+    const book = await this.prisma.book.findFirst({
+      where: { id: bookId, userId },
+      include: { chapters: { orderBy: { number: 'asc' } } },
+    });
+    if (!book) throw new NotFoundException('Book not found');
+
+    const chapters = book.chapters.map((c) => {
+      const plain = (c.content || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      return {
+        number: c.number,
+        title: c.title,
+        words: plain ? plain.split(' ').length : 0,
+        excerpt: plain,
+      };
+    });
+
+    return this.aiService.describeShape(book.title, chapters);
+  }
+
   async deleteBook(id: string, userId: string) {
     return this.prisma.book.delete({
       where: { id, userId },

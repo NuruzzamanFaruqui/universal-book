@@ -60,6 +60,27 @@ export class BooksController {
     return this.aiService.generateSynopses(body.topic, body.title, body.genre, body.tone, body.audience, body.outline);
   }
 
+  /**
+   * Selection-level assistance from the editor. Included in the book's cost —
+   * it is Claude thinking, not a provider rendering pixels.
+   */
+  @Post('assist')
+  @Throttle({ default: { ttl: 60_000, limit: 40 } })
+  async assist(@Body() body: { action: string; text: string; bookTitle?: string; tone?: string; voiceSample?: string }) {
+    const result = await this.aiService.assist(body.action, body.text, {
+      bookTitle: body.bookTitle,
+      tone: body.tone,
+      voiceSample: body.voiceSample,
+    });
+    return { text: result };
+  }
+
+  @Post(':bookId/shape')
+  @Throttle(AI_LIMIT)
+  async shape(@Param('bookId') bookId: string, @Request() req: any) {
+    return this.booksService.describeShape(bookId, req.user.id);
+  }
+
   @Post('import')
   async importBook(@Request() req: any, @Body() body: { title: string; genre: string; audience: string; content: string; fileName: string }) {
     return this.booksService.importBook(req.user.id, body);

@@ -1,9 +1,102 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
+import { MANAGED_KEYS, RuntimeConfigService } from '../config/runtime-config.service';
+import { EmailService } from '../email/email.service';
 
 @Injectable()
 export class AdminService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private config: RuntimeConfigService,
+    private email: EmailService,
+  ) {}
+
+  // ─── API Management ───────────────────────────────────────────────────────
+
+  /** Definitions plus whether each key is set and where it comes from. Never
+   *  returns a secret value. */
+  async getApiKeys() {
+    return { keys: await this.config.describe() };
+  }
+
+  /**
+   * Saves only the keys present in the payload. A blank value clears the
+   * database override so the environment variable takes over again; a value
+   * still containing the mask is treated as untouched.
+   */
+  async saveApiKeys(values: Record<string, string>) {
+    const known = new Set(MANAGED_KEYS.map((k) => k.key));
+    const saved: string[] = [];
+    const cleared: string[] = [];
+
+    for (const [key, raw] of Object.entries(values || {})) {
+      if (!known.has(key)) continue;
+      const value = (raw ?? '').trim();
+
+      if (value.includes('••••')) continue;
+
+      if (value === '') {
+        await this.prisma.setting.deleteMany({ where: { key } });
+        cleared.push(key);
+      } else {
+        await this.setSetting(key, value);
+        saved.push(key);
+      }
+    }
+
+    this.config.invalidate();
+    return { saved, cleared, message: `${saved.length} saved, ${cleared.length} cleared` };
+  }
+
+  /** Live check against the provider, so a wrong key is caught here rather
+   *  than by a user mid-generation. */
+  async testApiKey(group: string) {
+    try {
+      if (group === 'ai') {
+        const key = await this.config.get('ANTHROPIC_API_KEY');
+        if (!key) return { ok: false, error: 'No Anthropic key set.' };
+        const res = await fetch('https://api.anthropic.com/v1/models?limit=1', {
+          headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01' },
+        });
+        return res.ok
+          ? { ok: true, detail: 'Key accepted by Anthropic.' }
+          : { ok: false, error: `Anthropic returned ${res.status}.` };
+      }
+
+      if (group === 'stripe') {
+        const key = await this.config.get('STRIPE_SECRET_KEY');
+        if (!key) return { ok: false, error: 'No Stripe secret key set.' };
+        const res = await fetch('https://api.stripe.com/v1/balance', {
+          headers: { Authorization: `Bearer ${key}` },
+        });
+        return res.ok
+          ? { ok: true, detail: key.startsWith('sk_live') ? 'Live key accepted.' : 'Test key accepted.' }
+          : { ok: false, error: `Stripe returned ${res.status}.` };
+      }
+
+      if (group === 'email') {
+        const r = await this.email.verify();
+        return r.ok
+          ? { ok: true, detail: `${r.transport} transport reachable.` }
+          : { ok: false, error: r.error || 'Transport unavailable.' };
+      }
+
+      if (group === 'google') {
+        const project = await this.config.get('GOOGLE_CLOUD_PROJECT');
+        const bucket = await this.config.get('GCS_BUCKET');
+        if (!project) return { ok: false, error: 'No GCP project id set.' };
+        return {
+          ok: true,
+          detail: `Project ${project}${bucket ? `, bucket ${bucket}` : ', no bucket set'}. ` +
+                  'Vertex access uses the Cloud Run service account.',
+        };
+      }
+
+      return { ok: false, error: `Unknown group "${group}".` };
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? 'Check failed.' };
+    }
+  }
 
   async getAllUsers() {
     return this.prisma.user.findMany({

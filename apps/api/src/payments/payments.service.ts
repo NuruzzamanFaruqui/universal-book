@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { CreditTransactionType, Prisma } from '@prisma/client';
 import Stripe from 'stripe';
 import { PrismaService } from '../prisma.service';
+import { RuntimeConfigService } from '../config/runtime-config.service';
 import { randomBytes } from 'crypto';
 
 /** Money is stored as Float; round every derived figure to cents. */
@@ -22,13 +23,18 @@ const TOPUP_PACKAGES = [
 export class PaymentsService {
   private readonly logger = new Logger(PaymentsService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private config: RuntimeConfigService,
+  ) {}
 
   // ─── Stripe Instance ──────────────────────────────────────────────────────
 
-  private getStripe(): Stripe {
-    const secretKey = process.env.STRIPE_SECRET_KEY;
-    if (!secretKey) throw new BadRequestException('Stripe not configured.');
+  private async getStripe(): Promise<Stripe> {
+    const secretKey = await this.config.get('STRIPE_SECRET_KEY');
+    if (!secretKey) {
+      throw new BadRequestException('Payments are not configured. Add a Stripe secret key in Admin → API Management.');
+    }
     return new Stripe(secretKey, { apiVersion: '2026-02-25.clover' });
   }
 
@@ -134,7 +140,7 @@ export class PaymentsService {
       throw new BadRequestException('Invalid top-up amount.');
     }
 
-    const stripe = this.getStripe();
+    const stripe = await this.getStripe();
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       mode: 'payment',
@@ -180,7 +186,7 @@ export class PaymentsService {
     });
     if (existing) throw new BadRequestException('You already own this book.');
 
-    const stripe = this.getStripe();
+    const stripe = await this.getStripe();
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       mode: 'payment',
@@ -404,8 +410,8 @@ export class PaymentsService {
   // ─── Stripe Webhook ───────────────────────────────────────────────────────
 
   async handleWebhook(payload: Buffer, signature: string) {
-    const stripe = this.getStripe();
-    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+    const stripe = await this.getStripe();
+    const webhookSecret = await this.config.get('STRIPE_WEBHOOK_SECRET');
     if (!webhookSecret) throw new BadRequestException('Webhook secret not configured.');
 
     let event: Stripe.Event;

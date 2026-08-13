@@ -35,7 +35,9 @@ Namecheap DNS.
 elsewhere referring to Firebase Auth, Firebase RTDB, `FirebaseGuard`, or
 `onAuthStateChanged` is describing the pre-August architecture and is wrong.
 
-**AI model:** `claude-sonnet-4-20250514` — superseded, see §7.
+**Keys and models** are managed in **Admin → API Management**, stored in the
+`Setting` table and read at runtime through `RuntimeConfigService`. Database
+values override environment variables; blank falls back to env.
 
 ### Layout
 ```
@@ -129,9 +131,11 @@ Stripe is on sandbox keys. Webhook: `/api/payments/webhook`.
 
 ## 6. Architecture rules
 
-1. **Never install Tiptap v3** — incompatible with Next.js 14. The editor is
-   `contentEditable` + `document.execCommand()`. (Nine `@tiptap/*` packages are
-   still in `apps/web/package.json` and imported nowhere — safe to remove.)
+1. **The editor is Tiptap 3** (`components/editor/ManuscriptEditor.tsx`). The
+   old "Tiptap is permanently incompatible with Next.js 14" rule was wrong — the
+   packages had been installed without their `dist/` output, almost certainly a
+   partial install on a full Cloud Shell disk. It needs `immediatelyRender: false`
+   on `useEditor` and no `transpilePackages` entry.
 2. **No persistent connections.** Cloud Run scales to zero. Poll via
    `lib/realtime.ts`.
 3. **The API origin lives in `lib/config.ts`** — one constant, inlined at build
@@ -172,11 +176,8 @@ Stripe is on sandbox keys. Webhook: `/api/payments/webhook`.
 `PrismaService` now extends `PrismaClient`, so `$transaction` is available.
 
 ### Other
-- Admin Stripe/AI settings write to the `Setting` table that nothing reads —
-  `getStripe()` and `AiService` use `process.env` only. The page has no effect.
-- AI model `claude-sonnet-4-20250514` is superseded by the Claude 5 family.
-- Five `JSON.parse` calls on AI output with no try/catch — a truncated response
-  is a raw 500 mid-wizard.
+- AI model defaults to `claude-sonnet-4-20250514`, superseded by the Claude 5
+  family. Override it in Admin → API Management without a deploy.
 - No automated tests. The 19 `.spec.ts` files are unmodified scaffolding.
 - `TeamMember` has no table; the admin team page is `useState` only.
 - `books/[id]/page.tsx` is `'use client'`, so no per-book SEO metadata is
