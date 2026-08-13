@@ -250,6 +250,39 @@ Write the full chapter now:`
     return this.text(message);
   }
 
+  /**
+   * Shapes the author's own material into prose. Deliberately constrained: no
+   * new claims, no invented examples. A book is worth reading because of what
+   * its author knows, and this is the path from knowing to written.
+   */
+  async draftFromNotes(input: {
+    notes: string; bookTitle: string; chapterTitle: string; tone: string; audience: string;
+  }): Promise<string> {
+    const message = await (await this.anthropic()).messages.create({
+      model: await this.model(),
+      max_tokens: 4000,
+      system:
+        'You turn an author\'s rough notes into finished prose. Every idea, example, number and ' +
+        'opinion must come from the notes — never add facts, statistics, anecdotes or claims of ' +
+        'your own. Where the notes are thin, write less rather than inventing filler. Reply with ' +
+        'HTML only: <h2> for sections, <p> for paragraphs, <blockquote> for quotes, <ul>/<li> for ' +
+        'lists. No markdown fences, no preamble.',
+      messages: [{
+        role: 'user',
+        content: `Book: ${input.bookTitle}
+${input.chapterTitle ? `Chapter: ${input.chapterTitle}` : ''}
+${input.tone ? `Tone: ${input.tone}` : ''}
+${input.audience ? `Reader: ${input.audience}` : ''}
+
+My notes:
+"""${input.notes}"""
+
+Write this chapter from them.`,
+      }],
+    });
+    return this.text(message).replace(/```html|```/g, '').trim();
+  }
+
   /** Reads the manuscript and names what the author never had to declare. */
   async inferMetadata(sample: string): Promise<{
     genre: string; subGenre?: string; audience: string; tone: string;

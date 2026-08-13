@@ -137,6 +137,57 @@ export class BooksController {
     return this.booksService.generateMatter(bookId, req.user.id);
   }
 
+  // ─── Chapters ─────────────────────────────────────────────────────────────
+
+  @Post(':bookId/chapters')
+  async addChapter(
+    @Param('bookId') bookId: string,
+    @Body() body: { title?: string; afterId?: string },
+    @Request() req: any,
+  ) {
+    return this.booksService.addChapter(bookId, req.user.id, body || {});
+  }
+
+  @Put(':bookId/chapters/order')
+  async reorderChapters(
+    @Param('bookId') bookId: string,
+    @Body() body: { orderedIds: string[] },
+    @Request() req: any,
+  ) {
+    return this.booksService.reorderChapters(bookId, req.user.id, body.orderedIds || []);
+  }
+
+  @Put(':bookId/chapters/:chapterId/title')
+  async renameChapter(
+    @Param('bookId') bookId: string,
+    @Param('chapterId') chapterId: string,
+    @Body() body: { title: string },
+    @Request() req: any,
+  ) {
+    return this.booksService.renameChapter(bookId, chapterId, req.user.id, body.title ?? '');
+  }
+
+  @Delete(':bookId/chapters/:chapterId')
+  async deleteChapter(
+    @Param('bookId') bookId: string,
+    @Param('chapterId') chapterId: string,
+    @Request() req: any,
+  ) {
+    return this.booksService.deleteChapter(bookId, chapterId, req.user.id);
+  }
+
+  /** Shapes the author's own notes into a chapter. Included, not billed. */
+  @Post(':bookId/chapters/:chapterId/from-notes')
+  @Throttle(AI_LIMIT)
+  async draftFromNotes(
+    @Param('bookId') bookId: string,
+    @Param('chapterId') chapterId: string,
+    @Body() body: { notes: string },
+    @Request() req: any,
+  ) {
+    return this.booksService.draftFromNotes(bookId, chapterId, req.user.id, body.notes || '');
+  }
+
   @Put(':bookId/chapters/:chapterId')
   async updateChapter(
     @Param('bookId') bookId: string,

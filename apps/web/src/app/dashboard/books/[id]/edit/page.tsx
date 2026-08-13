@@ -6,13 +6,18 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   ArrowLeft, BookOpen, Sparkles, Map, Loader2, PanelRightClose, PanelRightOpen, AlertCircle, Upload,
-  FileStack, Wand2, ScrollText, X,
+  FileStack, Wand2, ScrollText, X, Plus, Trash2, ChevronUp, ChevronDown, FileText, PenLine,
 } from 'lucide-react';
 import ManuscriptEditor from '@/components/editor/ManuscriptEditor';
 import DraftWithAi from '@/components/editor/DraftWithAi';
+import WriteFromNotes from '@/components/editor/WriteFromNotes';
 import { getToken as getFreshToken } from '@/lib/auth';
 import { API_URL } from '@/lib/config';
-import { describeShape, inferMetadata, reviewBook, generateMatter, ShapeReport, ReviewReport, BookMetadata } from '@/lib/writing-ai';
+import {
+  describeShape, inferMetadata, reviewBook, generateMatter,
+  addChapter, renameChapter, deleteChapter, reorderChapters,
+  ShapeReport, ReviewReport, BookMetadata,
+} from '@/lib/writing-ai';
 
 const wordsIn = (html: string | null | undefined) => {
   const plain = (html || '').replace(/<[^>]+>/g, ' ');
@@ -46,6 +51,11 @@ export default function EditChapterPage() {
   const [metaBusy, setMetaBusy] = useState(false);
   const [matterBusy, setMatterBusy] = useState(false);
   const [titleDraft, setTitleDraft] = useState('');
+
+  const [showNotes, setShowNotes] = useState(false);
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState('');
+  const [chapterBusy, setChapterBusy] = useState(false);
 
   useEffect(() => { fetchData(); /* eslint-disable-next-line */ }, [bookId]);
 
@@ -127,6 +137,45 @@ export default function EditChapterPage() {
     try { await generateMatter(bookId); await fetchData(); }
     catch (e: any) { setShapeError(e.message); }
     finally { setMatterBusy(false); }
+  };
+
+  // ── chapters ──────────────────────────────────────────────────────────────
+
+  const withChapters = async (fn: () => Promise<any>) => {
+    setChapterBusy(true);
+    setShapeError('');
+    try { await fn(); await fetchData(); }
+    catch (e: any) { setShapeError(e.message); }
+    finally { setChapterBusy(false); }
+  };
+
+  const onAddChapter = () =>
+    withChapters(async () => {
+      const created = await addChapter(bookId, selectedChapter?.id);
+      setSelectedChapter(created);
+    });
+
+  const onRename = async (chapterId: string) => {
+    const title = renameDraft.trim();
+    setRenaming(null);
+    await withChapters(() => renameChapter(bookId, chapterId, title));
+  };
+
+  const onDelete = (chapterId: string, title: string) => {
+    if (!confirm(`Delete "${title || 'this chapter'}"? Its writing goes with it.`)) return;
+    withChapters(async () => {
+      await deleteChapter(bookId, chapterId);
+      if (selectedChapter?.id === chapterId) setSelectedChapter(null);
+    });
+  };
+
+  const onMove = (chapterId: string, direction: -1 | 1) => {
+    const ids = grouped.chapters.map((c: any) => c.id);
+    const i = ids.indexOf(chapterId);
+    const j = i + direction;
+    if (i < 0 || j < 0 || j >= ids.length) return;
+    [ids[i], ids[j]] = [ids[j], ids[i]];
+    withChapters(() => reorderChapters(bookId, ids));
   };
 
   const runShape = async () => {
@@ -261,26 +310,89 @@ export default function EditChapterPage() {
                                        border border-indigo-500/30">auto</span>
                     )}
                   </div>
-                  {rows.map((c: any) => {
+                  {rows.map((c: any, idx: number) => {
                     const on = c.id === selectedChapter?.id;
                     const words = on ? liveWords : wordsIn(c.content);
+                    const isChapter = section === 'chapters';
+
+                    if (renaming === c.id) {
+                      return (
+                        <input
+                          key={c.id}
+                          autoFocus
+                          value={renameDraft}
+                          onChange={e => setRenameDraft(e.target.value)}
+                          onBlur={() => onRename(c.id)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                            if (e.key === 'Escape') setRenaming(null);
+                          }}
+                          placeholder="Chapter title"
+                          className="w-full bg-slate-950 border border-blue-500 rounded-lg px-2.5 py-2
+                                     text-[13px] text-white focus:outline-none placeholder-slate-600"
+                        />
+                      );
+                    }
+
                     return (
-                      <button key={c.id} onClick={() => setSelectedChapter(c)}
-                        className={`flex items-baseline gap-2 w-full text-left px-2.5 py-2 rounded-lg text-[13px] leading-snug transition ${
-                          on ? 'bg-slate-700 text-white font-semibold' : 'text-slate-400 hover:text-white hover:bg-slate-700/50'
+                      <div key={c.id}
+                        className={`group flex items-center gap-1 rounded-lg transition ${
+                          on ? 'bg-slate-700' : 'hover:bg-slate-700/50'
                         }`}>
-                        <span className={`font-mono text-[10px] shrink-0 ${on ? 'text-blue-400' : 'text-slate-600'}`}>
-                          {section === 'chapters' ? c.number : '·'}
-                        </span>
-                        <span className="truncate flex-1">{c.title || 'Untitled chapter'}</span>
-                        {section === 'chapters' && (
-                          <span className="font-mono text-[10px] text-slate-600 shrink-0">
-                            {words ? (words > 999 ? `${(words / 1000).toFixed(1)}k` : words) : '—'}
+                        <button onClick={() => setSelectedChapter(c)}
+                          onDoubleClick={() => { if (isChapter) { setRenaming(c.id); setRenameDraft(c.title || ''); } }}
+                          title={isChapter ? 'Double-click to rename' : undefined}
+                          className={`flex items-baseline gap-2 flex-1 min-w-0 text-left px-2.5 py-2 text-[13px] leading-snug ${
+                            on ? 'text-white font-semibold' : 'text-slate-400 group-hover:text-white'
+                          }`}>
+                          <span className={`font-mono text-[10px] shrink-0 ${on ? 'text-blue-400' : 'text-slate-600'}`}>
+                            {isChapter ? c.number : '·'}
                           </span>
+                          <span className="truncate flex-1">{c.title || 'Untitled chapter'}</span>
+                          {isChapter && (
+                            <span className="font-mono text-[10px] text-slate-600 shrink-0">
+                              {words ? (words > 999 ? `${(words / 1000).toFixed(1)}k` : words) : '—'}
+                            </span>
+                          )}
+                        </button>
+
+                        {isChapter && (
+                          <div className="flex items-center opacity-0 group-hover:opacity-100 focus-within:opacity-100
+                                          transition pr-1 shrink-0">
+                            <button onClick={() => onMove(c.id, -1)} disabled={idx === 0 || chapterBusy}
+                              title="Move up"
+                              className="p-0.5 text-slate-500 hover:text-white disabled:opacity-20 disabled:hover:text-slate-500">
+                              <ChevronUp size={13} />
+                            </button>
+                            <button onClick={() => onMove(c.id, 1)} disabled={idx === rows.length - 1 || chapterBusy}
+                              title="Move down"
+                              className="p-0.5 text-slate-500 hover:text-white disabled:opacity-20 disabled:hover:text-slate-500">
+                              <ChevronDown size={13} />
+                            </button>
+                            <button onClick={() => { setRenaming(c.id); setRenameDraft(c.title || ''); }}
+                              title="Rename"
+                              className="p-0.5 text-slate-500 hover:text-white">
+                              <PenLine size={12} />
+                            </button>
+                            <button onClick={() => onDelete(c.id, c.title)} disabled={chapterBusy}
+                              title="Delete chapter"
+                              className="p-0.5 text-slate-500 hover:text-red-400 disabled:opacity-20">
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
                         )}
-                      </button>
+                      </div>
                     );
                   })}
+
+                  {section === 'chapters' && (
+                    <button onClick={onAddChapter} disabled={chapterBusy}
+                      className="flex items-center gap-2 w-full text-left px-2.5 py-2 rounded-lg text-[12.5px]
+                                 text-slate-500 hover:text-blue-300 hover:bg-slate-700/40 transition disabled:opacity-50">
+                      {chapterBusy ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
+                      Add chapter
+                    </button>
+                  )}
                 </div>
               );
             })}
@@ -381,6 +493,25 @@ export default function EditChapterPage() {
                              transition text-left">
                   <Sparkles size={15} /> Draft the whole book with AI
                   <span className="ml-auto text-[11px] text-slate-500">$5</span>
+                </button>
+              )}
+
+              {showNotes && selectedChapter ? (
+                <WriteFromNotes
+                  bookId={bookId}
+                  chapterId={selectedChapter.id}
+                  chapterTitle={selectedChapter.title}
+                  hasContent={wordsIn(selectedChapter.content) > 0}
+                  onClose={() => setShowNotes(false)}
+                  onDone={() => { setShowNotes(false); fetchData(); }}
+                />
+              ) : (
+                <button onClick={() => setShowNotes(true)} disabled={!selectedChapter}
+                  className="flex items-center gap-2.5 w-full px-3 py-2.5 text-[13px] text-slate-300 bg-slate-900/60
+                             border border-slate-700/60 rounded-xl hover:border-indigo-500 hover:text-indigo-300
+                             transition text-left disabled:opacity-50">
+                  <FileText size={15} /> Write from my notes
+                  <span className="ml-auto text-[11px] text-slate-500">included</span>
                 </button>
               )}
 

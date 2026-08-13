@@ -222,6 +222,160 @@ export class BooksService {
     }
   }
 
+  // ─── Chapters ─────────────────────────────────────────────────────────────
+
+  /** Ownership or author-group membership, for operations on the book itself. */
+  private async assertCanEditBook(bookId: string, userId: string) {
+    const book = await this.prisma.book.findUnique({
+      where: { id: bookId },
+      select: { id: true, userId: true },
+    });
+    if (!book) throw new NotFoundException('Book not found');
+    if (book.userId === userId) return;
+
+    const collaborator = await this.prisma.authorGroup.findFirst({
+      where: { bookId, members: { some: { userId } } },
+      select: { id: true },
+    });
+    if (!collaborator) throw new ForbiddenException('You do not have edit access to this book');
+  }
+
+  async addChapter(bookId: string, userId: string, data: { title?: string; afterId?: string }) {
+    await this.assertCanEditBook(bookId, userId);
+
+    return this.prisma.$transaction(async (tx) => {
+      const chapters = await tx.chapter.findMany({
+        where: { bookId, kind: 'CHAPTER' },
+        orderBy: { number: 'asc' },
+        select: { id: true, number: true },
+      });
+
+      // Insert after a given chapter, or append.
+      const at = data.afterId
+        ? (chapters.findIndex((c) => c.id === data.afterId) + 1) || chapters.length
+        : chapters.length;
+
+      // Shift everything below down one, highest first so the unique ordering
+      // never collides mid-update.
+      for (const c of chapters.slice(at).reverse()) {
+        await tx.chapter.update({ where: { id: c.id }, data: { number: c.number + 1 } });
+      }
+
+      return tx.chapter.create({
+        data: {
+          bookId,
+          kind: 'CHAPTER',
+          number: at + 1,
+          title: data.title?.trim() || '',
+          content: '',
+        },
+      });
+    });
+  }
+
+  async renameChapter(bookId: string, chapterId: string, userId: string, title: string) {
+    await this.assertCanEditBook(bookId, userId);
+    const chapter = await this.prisma.chapter.findFirst({ where: { id: chapterId, bookId } });
+    if (!chapter) throw new NotFoundException('Chapter not found');
+
+    return this.prisma.chapter.update({
+      where: { id: chapterId },
+      data: { title: title.trim().slice(0, 300) },
+    });
+  }
+
+  async deleteChapter(bookId: string, chapterId: string, userId: string) {
+    await this.assertCanEditBook(bookId, userId);
+
+    return this.prisma.$transaction(async (tx) => {
+      const chapter = await tx.chapter.findFirst({ where: { id: chapterId, bookId } });
+      if (!chapter) throw new NotFoundException('Chapter not found');
+
+      const siblings = await tx.chapter.count({ where: { bookId, kind: chapter.kind } });
+      if (chapter.kind === 'CHAPTER' && siblings <= 1) {
+        throw new BadRequestException('A book needs at least one chapter.');
+      }
+
+      await tx.chapter.delete({ where: { id: chapterId } });
+
+      // Close the gap so numbering stays 1..n.
+      const rest = await tx.chapter.findMany({
+        where: { bookId, kind: chapter.kind, number: { gt: chapter.number } },
+        orderBy: { number: 'asc' },
+        select: { id: true, number: true },
+      });
+      for (const c of rest) {
+        await tx.chapter.update({ where: { id: c.id }, data: { number: c.number - 1 } });
+      }
+      return { deleted: chapterId };
+    });
+  }
+
+  /** Whole-list reorder — the client sends the ids in their new order. */
+  async reorderChapters(bookId: string, userId: string, orderedIds: string[]) {
+    await this.assertCanEditBook(bookId, userId);
+
+    return this.prisma.$transaction(async (tx) => {
+      const chapters = await tx.chapter.findMany({
+        where: { bookId, kind: 'CHAPTER' },
+        select: { id: true },
+      });
+      const known = new Set(chapters.map((c) => c.id));
+      const ids = orderedIds.filter((id) => known.has(id));
+      if (ids.length !== chapters.length) {
+        throw new BadRequestException('The chapter list does not match this book.');
+      }
+
+      // Park everything above the range first: `number` collides otherwise.
+      for (const [i, id] of ids.entries()) {
+        await tx.chapter.update({ where: { id }, data: { number: 10_000 + i } });
+      }
+      for (const [i, id] of ids.entries()) {
+        await tx.chapter.update({ where: { id }, data: { number: i + 1 } });
+      }
+
+      return tx.chapter.findMany({
+        where: { bookId, kind: 'CHAPTER' },
+        orderBy: { number: 'asc' },
+      });
+    });
+  }
+
+  /**
+   * Drafts a chapter from material the author already has — notes, a transcript,
+   * a rough outline. The point is that the substance is theirs; Claude only
+   * gives it shape, so the result is not the generic prose a topic string
+   * produces.
+   */
+  async draftFromNotes(bookId: string, chapterId: string, userId: string, notes: string) {
+    await this.assertCanEditChapter(bookId, chapterId, userId);
+    if (notes.trim().length < 40) {
+      throw new BadRequestException('Give me a little more to work with — a few lines at least.');
+    }
+
+    const book = await this.prisma.book.findUnique({
+      where: { id: bookId },
+      select: { title: true, tone: true, audience: true },
+    });
+    const chapter = await this.prisma.chapter.findUnique({
+      where: { id: chapterId },
+      select: { title: true },
+    });
+
+    const html = await this.aiService.draftFromNotes({
+      notes: notes.slice(0, 20000),
+      bookTitle: book?.title || 'Untitled',
+      chapterTitle: chapter?.title || '',
+      tone: book?.tone || '',
+      audience: book?.audience || '',
+    });
+
+    return this.prisma.chapter.update({
+      where: { id: chapterId },
+      data: { content: html, updatedById: userId },
+    });
+  }
+
   // ─── Book metadata ────────────────────────────────────────────────────────
 
   async updateBook(bookId: string, userId: string, data: {

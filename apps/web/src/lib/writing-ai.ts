@@ -98,3 +98,41 @@ export async function reviewBook(bookId: string): Promise<ReviewReport> {
 export async function generateMatter(bookId: string): Promise<{ created: number }> {
   return post<{ created: number }>(`/api/books/${bookId}/matter`, {});
 }
+
+
+// ─── Chapters ───────────────────────────────────────────────────────────────
+
+async function send<T>(path: string, method: string, body?: unknown): Promise<T> {
+  const headers = await authHeader();
+  if (!headers.Authorization) throw new Error('Please sign in again.');
+  const res = await fetch(`${API_URL}${path}`, {
+    method,
+    headers: { ...headers, 'Content-Type': 'application/json' },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
+  if (!res.ok) {
+    let message = 'That did not work. Try again.';
+    try {
+      const err = await res.json();
+      message = Array.isArray(err?.message) ? err.message[0] : err?.message || message;
+    } catch { /* non-JSON error body */ }
+    throw new Error(message);
+  }
+  return res.json();
+}
+
+export const addChapter = (bookId: string, afterId?: string) =>
+  send<any>(`/api/books/${bookId}/chapters`, 'POST', { afterId });
+
+export const renameChapter = (bookId: string, chapterId: string, title: string) =>
+  send<any>(`/api/books/${bookId}/chapters/${chapterId}/title`, 'PUT', { title });
+
+export const deleteChapter = (bookId: string, chapterId: string) =>
+  send<any>(`/api/books/${bookId}/chapters/${chapterId}`, 'DELETE');
+
+export const reorderChapters = (bookId: string, orderedIds: string[]) =>
+  send<any>(`/api/books/${bookId}/chapters/order`, 'PUT', { orderedIds });
+
+/** Shapes the author's own notes into a chapter. Included, not billed. */
+export const draftFromNotes = (bookId: string, chapterId: string, notes: string) =>
+  send<any>(`/api/books/${bookId}/chapters/${chapterId}/from-notes`, 'POST', { notes });
