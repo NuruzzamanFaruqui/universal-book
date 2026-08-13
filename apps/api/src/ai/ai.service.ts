@@ -250,6 +250,77 @@ Write the full chapter now:`
     return this.text(message);
   }
 
+  /** Reads the manuscript and names what the author never had to declare. */
+  async inferMetadata(sample: string): Promise<{
+    genre: string; subGenre?: string; audience: string; tone: string;
+    titles: string[]; synopsis: string; keywords: string[];
+  }> {
+    const message = await (await this.anthropic()).messages.create({
+      model: await this.model(),
+      max_tokens: 1500,
+      messages: [{
+        role: 'user',
+        content: `Read this book in progress and infer its metadata.
+
+"""${sample}"""
+
+Return ONLY JSON:
+{
+  "genre": "One of: Fantasy, Sci-Fi, Romance, Thriller, Self-Help, Business, Mystery, Horror, Biography, Literary Fiction, History, Science, Philosophy, Psychology, Education, Technology, Health, Travel, Cooking, Poetry",
+  "subGenre": "More specific, or empty",
+  "audience": "Who this is for, a short phrase",
+  "tone": "A short phrase describing the register",
+  "titles": ["Three title options that fit what is actually written"],
+  "synopsis": "A back-cover blurb of 80-120 words, describing the book as it stands",
+  "keywords": ["Five search keywords"]
+}`,
+      }],
+    });
+    return this.parseJson(this.text(message), 'the book metadata');
+  }
+
+  /**
+   * Cross-chapter review. Asks only for the judgements a model is actually good
+   * at — promises left unkept, terminology drift, contradictions, voice shifts.
+   * Pacing is arithmetic and computed by the caller.
+   */
+  async reviewManuscript(
+    title: string,
+    chapters: { number: number; title: string; words: number; text: string }[],
+  ): Promise<{
+    continuity: { severity: 'high' | 'low'; chapter?: number; issue: string }[];
+    voice: string;
+    whereYouLeftOff?: { chapter: number; note: string };
+  }> {
+    const body = chapters
+      .map(c => `--- Chapter ${c.number}: ${c.title} (${c.words} words) ---\n${c.text.slice(0, 3000)}`)
+      .join('\n\n');
+
+    const message = await (await this.anthropic()).messages.create({
+      model: await this.model(),
+      max_tokens: 2000,
+      messages: [{
+        role: 'user',
+        content: `You are reviewing a manuscript titled "${title}" for its author.
+
+${body}
+
+Report only real, specific problems you can point at. If there are none, return empty arrays —
+do not invent issues to seem useful.
+
+Return ONLY JSON:
+{
+  "continuity": [
+    { "severity": "high", "chapter": 3, "issue": "Chapter 1 promises a framework for audits; no chapter delivers one." }
+  ],
+  "voice": "One sentence on whether the register is consistent, naming chapters that drift.",
+  "whereYouLeftOff": { "chapter": 3, "note": "Stops mid-argument after introducing tacit knowledge without defining it." }
+}`,
+      }],
+    });
+    return this.parseJson(this.text(message), 'the manuscript review');
+  }
+
   // ─── Writing assistance ───────────────────────────────────────────────────
 
   /**

@@ -129,9 +129,17 @@ model Book {
   @@index([userId])
 }
 
+// Front matter is not a chapter, but it lives in the same ordered document.
+enum ChapterKind {
+  FRONT_MATTER
+  CHAPTER
+  BACK_MATTER
+}
+
 model Chapter {
   id          String           @id @default(uuid())
   number      Int
+  kind        ChapterKind      @default(CHAPTER)
   title       String
   summary     String?
   content     String?
@@ -144,7 +152,7 @@ model Chapter {
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
 
-  @@index([bookId, number])
+  @@index([bookId, kind, number])
 }
 
 model Subscription {

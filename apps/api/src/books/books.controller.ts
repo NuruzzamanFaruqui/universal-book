@@ -111,6 +111,32 @@ export class BooksController {
     return this.booksService.generateChapterContent(bookId, chapterId, req.user.id);
   }
 
+  @Put(':bookId')
+  async updateBook(
+    @Param('bookId') bookId: string,
+    @Body() body: { title?: string; subtitle?: string; genre?: string; tone?: string; audience?: string; synopsis?: string },
+    @Request() req: any,
+  ) {
+    return this.booksService.updateBook(bookId, req.user.id, body);
+  }
+
+  @Post(':bookId/infer')
+  @Throttle(AI_LIMIT)
+  async infer(@Param('bookId') bookId: string, @Request() req: any) {
+    return this.booksService.inferMetadata(bookId, req.user.id);
+  }
+
+  @Post(':bookId/review')
+  @Throttle(AI_LIMIT)
+  async review(@Param('bookId') bookId: string, @Request() req: any) {
+    return this.booksService.reviewBook(bookId, req.user.id);
+  }
+
+  @Post(':bookId/matter')
+  async matter(@Param('bookId') bookId: string, @Request() req: any) {
+    return this.booksService.generateMatter(bookId, req.user.id);
+  }
+
   @Put(':bookId/chapters/:chapterId')
   async updateChapter(
     @Param('bookId') bookId: string,

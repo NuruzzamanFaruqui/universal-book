@@ -59,3 +59,42 @@ export async function assist(
 export async function describeShape(bookId: string): Promise<ShapeReport> {
   return post<ShapeReport>(`/api/books/${bookId}/shape`, {});
 }
+
+
+// ─── Whole-book operations ──────────────────────────────────────────────────
+
+export interface BookMetadata {
+  genre: string;
+  subGenre?: string;
+  audience: string;
+  tone: string;
+  titles: string[];
+  synopsis: string;
+  keywords: string[];
+}
+
+export interface ReviewReport {
+  continuity: { severity: 'high' | 'low'; chapter?: number; issue: string }[];
+  voice: string;
+  whereYouLeftOff?: { chapter: number; note: string };
+  pacing: {
+    averageWords: number;
+    chapters: number;
+    outliers: { number: number; title: string; words: number }[];
+  };
+}
+
+/** Genre, audience, titles and a blurb, read out of what has been written. */
+export async function inferMetadata(bookId: string): Promise<BookMetadata> {
+  return post<BookMetadata>(`/api/books/${bookId}/infer`, {});
+}
+
+/** Continuity, voice and pacing across the whole manuscript. */
+export async function reviewBook(bookId: string): Promise<ReviewReport> {
+  return post<ReviewReport>(`/api/books/${bookId}/review`, {});
+}
+
+/** Title page, copyright, contents, about the author, acknowledgements. */
+export async function generateMatter(bookId: string): Promise<{ created: number }> {
+  return post<{ created: number }>(`/api/books/${bookId}/matter`, {});
+}

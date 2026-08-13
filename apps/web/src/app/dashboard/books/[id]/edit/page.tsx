@@ -6,12 +6,13 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   ArrowLeft, BookOpen, Sparkles, Map, Loader2, PanelRightClose, PanelRightOpen, AlertCircle, Upload,
+  FileStack, Wand2, ScrollText, X,
 } from 'lucide-react';
 import ManuscriptEditor from '@/components/editor/ManuscriptEditor';
 import DraftWithAi from '@/components/editor/DraftWithAi';
 import { getToken as getFreshToken } from '@/lib/auth';
 import { API_URL } from '@/lib/config';
-import { describeShape, ShapeReport } from '@/lib/writing-ai';
+import { describeShape, inferMetadata, reviewBook, generateMatter, ShapeReport, ReviewReport, BookMetadata } from '@/lib/writing-ai';
 
 const wordsIn = (html: string | null | undefined) => {
   const plain = (html || '').replace(/<[^>]+>/g, ' ');
@@ -30,10 +31,21 @@ export default function EditChapterPage() {
   const [liveWords, setLiveWords] = useState(0);
   const [panelOpen, setPanelOpen] = useState(true);
 
+  const [tab, setTab] = useState<'write' | 'review'>('write');
   const [showDraft, setShowDraft] = useState(false);
   const [shape, setShape] = useState<ShapeReport | null>(null);
   const [shapeBusy, setShapeBusy] = useState(false);
   const [shapeError, setShapeError] = useState('');
+
+  const [review, setReview] = useState<ReviewReport | null>(null);
+  const [reviewBusy, setReviewBusy] = useState(false);
+  const [reviewError, setReviewError] = useState('');
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+
+  const [meta, setMeta] = useState<BookMetadata | null>(null);
+  const [metaBusy, setMetaBusy] = useState(false);
+  const [matterBusy, setMatterBusy] = useState(false);
+  const [titleDraft, setTitleDraft] = useState('');
 
   useEffect(() => { fetchData(); /* eslint-disable-next-line */ }, [bookId]);
 
@@ -49,7 +61,14 @@ export default function EditChapterPage() {
       if (bookRes.ok) {
         const data = await bookRes.json();
         setBook(data);
-        if (data.chapters?.length) setSelectedChapter(data.chapters[0]);
+        setTitleDraft(data.title || '');
+        if (data.chapters?.length) {
+          setSelectedChapter((prev: any) =>
+            prev
+              ? data.chapters.find((c: any) => c.id === prev.id) || prev
+              : data.chapters.find((c: any) => (c.kind || 'CHAPTER') === 'CHAPTER') || data.chapters[0],
+          );
+        }
       }
       if (userRes.ok) setUser(await userRes.json());
     } catch (e) { /* keep whatever is on screen */ }
@@ -70,6 +89,45 @@ export default function EditChapterPage() {
       chapters: b.chapters.map((c: any) => c.id === selectedChapter.id ? { ...c, content } : c),
     }));
   }, [bookId, selectedChapter]);
+
+  const saveTitle = async () => {
+    const next = titleDraft.trim();
+    if (next === (book?.title || '')) return;
+    const token = await getFreshToken();
+    await fetch(`${API_URL}/api/books/${bookId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ title: next }),
+    });
+    setBook((b: any) => b && { ...b, title: next });
+  };
+
+  const runInfer = async () => {
+    setMetaBusy(true);
+    setShapeError('');
+    try {
+      const m = await inferMetadata(bookId);
+      setMeta(m);
+      setBook((b: any) => b && { ...b, genre: b.genre || m.genre, audience: b.audience || m.audience });
+    } catch (e: any) { setShapeError(e.message); }
+    finally { setMetaBusy(false); }
+  };
+
+  const runReview = async () => {
+    setReviewBusy(true);
+    setReviewError('');
+    try { setReview(await reviewBook(bookId)); }
+    catch (e: any) { setReviewError(e.message); }
+    finally { setReviewBusy(false); }
+  };
+
+  const runMatter = async () => {
+    setMatterBusy(true);
+    setShapeError('');
+    try { await generateMatter(bookId); await fetchData(); }
+    catch (e: any) { setShapeError(e.message); }
+    finally { setMatterBusy(false); }
+  };
 
   const runShape = async () => {
     setShapeBusy(true);
@@ -92,15 +150,25 @@ export default function EditChapterPage() {
   }, [book, selectedChapter]);
 
   const hasWriting = useMemo(
-    () => (book?.chapters || []).some((c: any) => wordsIn(c.content) > 0),
+    () => (book?.chapters || []).some((c: any) => (c.kind || 'CHAPTER') === 'CHAPTER' && wordsIn(c.content) > 0),
     [book],
   );
 
-  const totalWords = useMemo(() => {
-    if (!book?.chapters) return 0;
-    return book.chapters.reduce((sum: number, c: any) =>
-      sum + (c.id === selectedChapter?.id ? liveWords : wordsIn(c.content)), 0);
-  }, [book, selectedChapter, liveWords]);
+  const grouped = useMemo(() => {
+    const all = book?.chapters || [];
+    const of = (k: string) => all
+      .filter((c: any) => (c.kind || 'CHAPTER') === k)
+      .sort((a: any, b: any) => a.number - b.number);
+    return { front: of('FRONT_MATTER'), chapters: of('CHAPTER'), back: of('BACK_MATTER') };
+  }, [book]);
+
+  const hasMatter = grouped.front.length > 0 || grouped.back.length > 0;
+  const openFlags = (review?.continuity || []).filter(f => !dismissed.has(f.issue));
+
+  const totalWords = useMemo(() =>
+    grouped.chapters.reduce((sum: number, c: any) =>
+      sum + (c.id === selectedChapter?.id ? liveWords : wordsIn(c.content)), 0),
+  [grouped, selectedChapter, liveWords]);
 
   if (loading) return (
     <div className="min-h-screen bg-slate-900 flex items-center justify-center">
@@ -125,12 +193,32 @@ export default function EditChapterPage() {
           <ArrowLeft size={18} />
         </Link>
         <BookOpen size={18} className="text-blue-400 shrink-0" />
-        <span className="font-semibold text-[15px] truncate">{book.title || 'Untitled book'}</span>
-        {book.genre && (
-          <span className="hidden sm:inline text-[11px] px-2 py-0.5 rounded-full border border-slate-600 text-slate-400 shrink-0">
-            {book.genre}
+        <input
+          value={titleDraft}
+          onChange={e => setTitleDraft(e.target.value)}
+          onBlur={saveTitle}
+          onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+          placeholder="Untitled book"
+          aria-label="Book title"
+          className="font-semibold text-[15px] bg-transparent border border-transparent hover:border-slate-600
+                     focus:border-blue-500 focus:bg-slate-900 rounded-md px-2 py-1 -ml-1 min-w-[8rem]
+                     max-w-[22rem] flex-1 focus:outline-none placeholder-slate-600 transition-colors"
+        />
+        {book.genre ? (
+          <span className="hidden sm:inline-flex items-center gap-1.5 text-[11px] px-2 py-0.5 rounded-full
+                           border border-indigo-500/40 bg-indigo-500/10 text-indigo-300 shrink-0"
+                title="Detected from what you have written — confirmed at publish, never before">
+            <Sparkles size={9} /> {book.genre}
           </span>
-        )}
+        ) : hasWriting ? (
+          <button onClick={runInfer} disabled={metaBusy}
+            className="hidden sm:inline-flex items-center gap-1.5 text-[11px] px-2 py-0.5 rounded-full
+                       border border-slate-600 text-slate-400 hover:border-indigo-500 hover:text-indigo-300
+                       shrink-0 transition disabled:opacity-50">
+            {metaBusy ? <Loader2 size={9} className="animate-spin" /> : <Wand2 size={9} />}
+            {metaBusy ? 'Reading…' : 'Detect genre'}
+          </button>
+        ) : null}
         <span className="ml-auto text-xs text-slate-400 tabular-nums shrink-0">
           {totalWords.toLocaleString()} words
         </span>
@@ -149,25 +237,54 @@ export default function EditChapterPage() {
             Manuscript
           </div>
           <div className="flex-1 overflow-y-auto px-2 pb-3">
-            {book.chapters?.map((c: any) => {
-              const on = c.id === selectedChapter?.id;
-              const words = on ? liveWords : wordsIn(c.content);
+            {(['front', 'chapters', 'back'] as const).map(section => {
+              const rows = grouped[section];
+              if (!rows.length) return null;
+              const label = section === 'front' ? 'Front matter'
+                : section === 'back' ? 'Back matter' : 'Chapters';
               return (
-                <button key={c.id} onClick={() => setSelectedChapter(c)}
-                  className={`flex items-baseline gap-2 w-full text-left px-2.5 py-2 rounded-lg text-[13px] leading-snug transition ${
-                    on ? 'bg-slate-700 text-white font-semibold' : 'text-slate-400 hover:text-white hover:bg-slate-700/50'
-                  }`}>
-                  <span className={`font-mono text-[10px] shrink-0 ${on ? 'text-blue-400' : 'text-slate-600'}`}>
-                    {c.number}
-                  </span>
-                  <span className="truncate flex-1">{c.title || 'Untitled chapter'}</span>
-                  <span className="font-mono text-[10px] text-slate-600 shrink-0">
-                    {words ? (words > 999 ? `${(words / 1000).toFixed(1)}k` : words) : '—'}
-                  </span>
-                </button>
+                <div key={section} className="mb-1">
+                  <div className="flex items-center gap-1.5 px-2.5 pt-2 pb-1">
+                    <span className="text-[10px] uppercase tracking-wider text-slate-500">{label}</span>
+                    {section !== 'chapters' && (
+                      <span className="text-[9px] px-1 py-px rounded bg-indigo-500/15 text-indigo-400
+                                       border border-indigo-500/30">auto</span>
+                    )}
+                  </div>
+                  {rows.map((c: any) => {
+                    const on = c.id === selectedChapter?.id;
+                    const words = on ? liveWords : wordsIn(c.content);
+                    return (
+                      <button key={c.id} onClick={() => setSelectedChapter(c)}
+                        className={`flex items-baseline gap-2 w-full text-left px-2.5 py-2 rounded-lg text-[13px] leading-snug transition ${
+                          on ? 'bg-slate-700 text-white font-semibold' : 'text-slate-400 hover:text-white hover:bg-slate-700/50'
+                        }`}>
+                        <span className={`font-mono text-[10px] shrink-0 ${on ? 'text-blue-400' : 'text-slate-600'}`}>
+                          {section === 'chapters' ? c.number : '·'}
+                        </span>
+                        <span className="truncate flex-1">{c.title || 'Untitled chapter'}</span>
+                        {section === 'chapters' && (
+                          <span className="font-mono text-[10px] text-slate-600 shrink-0">
+                            {words ? (words > 999 ? `${(words / 1000).toFixed(1)}k` : words) : '—'}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
               );
             })}
+
+            {!hasMatter && (
+              <button onClick={runMatter} disabled={matterBusy}
+                className="flex items-center gap-2 w-full text-left px-2.5 py-2 mt-2 rounded-lg text-[12px]
+                           text-slate-500 hover:text-indigo-300 hover:bg-slate-700/40 transition disabled:opacity-50">
+                {matterBusy ? <Loader2 size={13} className="animate-spin" /> : <FileStack size={13} />}
+                {matterBusy ? 'Adding…' : 'Add title page & copyright'}
+              </button>
+            )}
           </div>
+
           <div className="border-t border-slate-700/60 px-4 py-3">
             <div className="flex justify-between text-[11px] text-slate-400 mb-1.5">
               <span>Draft</span>
@@ -208,11 +325,26 @@ export default function EditChapterPage() {
         {/* assistant */}
         {panelOpen && (
           <aside className="hidden xl:flex w-80 flex-col bg-slate-800 border-l border-slate-700 shrink-0">
-            <div className="px-4 pt-3 pb-2 text-[10px] uppercase tracking-widest text-slate-500 font-mono flex items-center gap-1.5">
+            <div className="px-4 pt-3 pb-1.5 text-[10px] uppercase tracking-widest text-slate-500 font-mono flex items-center gap-1.5">
               <Sparkles size={11} className="text-indigo-400" /> Assistant
+              {openFlags.length > 0 && (
+                <span className="ml-auto text-[9px] px-1.5 py-px rounded-full bg-amber-500/15
+                                 text-amber-400 border border-amber-500/30 normal-case tracking-normal">
+                  {openFlags.length} to look at
+                </span>
+              )}
             </div>
 
-            <div className="flex-1 overflow-y-auto px-3 pb-4 space-y-2">
+            <div className="flex gap-1 px-3 pb-2">
+              {(['write', 'review'] as const).map(t => (
+                <button key={t} onClick={() => setTab(t)}
+                  className={`px-3 py-1.5 rounded-lg text-[12.5px] font-semibold capitalize transition ${
+                    tab === t ? 'bg-indigo-500/15 text-indigo-300' : 'text-slate-500 hover:text-slate-300'
+                  }`}>{t}</button>
+              ))}
+            </div>
+
+            <div className={`flex-1 overflow-y-auto px-3 pb-4 space-y-2 ${tab === 'write' ? '' : 'hidden'}`}>
               <div className="bg-slate-900/60 border border-slate-700/60 rounded-xl p-3">
                 <p className="text-[12px] text-slate-400 leading-relaxed">
                   Select any passage for <strong className="text-slate-200">Tighten</strong>,{' '}
@@ -292,6 +424,103 @@ export default function EditChapterPage() {
                     </div>
                   )}
                 </div>
+              )}
+            </div>
+
+            {/* review */}
+            <div className={`flex-1 overflow-y-auto px-3 pb-4 space-y-2 ${tab === 'review' ? '' : 'hidden'}`}>
+              <button onClick={runReview} disabled={reviewBusy || !hasWriting}
+                className="flex items-center gap-2.5 w-full px-3 py-2.5 text-[13px] text-slate-300 bg-slate-900/60
+                           border border-slate-700/60 rounded-xl hover:border-indigo-500 hover:text-indigo-300
+                           transition disabled:opacity-50 text-left">
+                {reviewBusy ? <Loader2 size={15} className="animate-spin" /> : <ScrollText size={15} />}
+                {reviewBusy ? 'Reading the manuscript…' : review ? 'Review again' : 'Review my manuscript'}
+              </button>
+
+              {!hasWriting && (
+                <p className="text-[12px] text-slate-500 px-1 leading-relaxed">
+                  Write a chapter and I&apos;ll check it for promises you didn&apos;t keep, terms that drift,
+                  and places the voice changes.
+                </p>
+              )}
+
+              {reviewError && (
+                <div className="flex gap-2 px-3 py-2.5 bg-red-500/10 border border-red-500/30 rounded-xl text-[12px] text-red-300">
+                  <AlertCircle size={14} className="shrink-0 mt-0.5" />{reviewError}
+                </div>
+              )}
+
+              {review && (
+                <>
+                  {openFlags.length === 0 ? (
+                    <div className="bg-slate-900/60 border border-slate-700/60 rounded-xl p-3.5">
+                      <p className="text-[12.5px] text-emerald-300 leading-relaxed">
+                        Nothing inconsistent found. Promises are kept and terminology holds.
+                      </p>
+                    </div>
+                  ) : openFlags.map((f, i) => (
+                    <div key={i}
+                      className={`flex gap-2 items-start px-3 py-2.5 rounded-xl text-[12.5px] leading-relaxed border-l-2 ${
+                        f.severity === 'high'
+                          ? 'bg-amber-500/10 border-l-amber-500 text-amber-100/90'
+                          : 'bg-slate-900/60 border-l-slate-600 text-slate-300'
+                      }`}>
+                      <AlertCircle size={13} className="shrink-0 mt-0.5 opacity-70" />
+                      <span className="flex-1">
+                        {f.chapter ? <strong className="font-semibold">Ch.{f.chapter} · </strong> : null}
+                        {f.issue}
+                      </span>
+                      <button onClick={() => setDismissed(d => new Set(d).add(f.issue))}
+                        title="Dismiss" className="shrink-0 opacity-50 hover:opacity-100 transition">
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ))}
+
+                  <div className="bg-slate-900/60 border border-slate-700/60 rounded-xl p-3.5">
+                    <h4 className="text-[11px] uppercase tracking-wider text-slate-500 font-mono mb-1.5">Pacing</h4>
+                    <p className="text-[12.5px] text-slate-300 leading-relaxed">
+                      {review.pacing.chapters} chapters, averaging{' '}
+                      <strong className="tabular-nums">{review.pacing.averageWords.toLocaleString()}</strong> words.
+                    </p>
+                    {review.pacing.outliers.length > 0 && (
+                      <ul className="mt-2 space-y-1">
+                        {review.pacing.outliers.map(o => (
+                          <li key={o.number} className="text-[12px] text-amber-200/80 flex gap-2">
+                            <span className="text-amber-500">·</span>
+                            Ch.{o.number} is {o.words.toLocaleString()} words — well off the average.
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+
+                  {review.voice && (
+                    <div className="bg-slate-900/60 border border-slate-700/60 rounded-xl p-3.5">
+                      <h4 className="text-[11px] uppercase tracking-wider text-slate-500 font-mono mb-1.5">Voice</h4>
+                      <p className="text-[12.5px] text-slate-300 leading-relaxed">{review.voice}</p>
+                    </div>
+                  )}
+
+                  {review.whereYouLeftOff && (
+                    <div className="bg-slate-900/60 border border-slate-700/60 rounded-xl p-3.5">
+                      <h4 className="text-[11px] uppercase tracking-wider text-slate-500 font-mono mb-1.5">
+                        Where you left off
+                      </h4>
+                      <p className="text-[12.5px] text-slate-300 leading-relaxed">
+                        {review.whereYouLeftOff.note}
+                      </p>
+                      <button
+                        onClick={() => {
+                          const target = grouped.chapters.find((c: any) => c.number === review.whereYouLeftOff!.chapter);
+                          if (target) setSelectedChapter(target);
+                        }}
+                        className="mt-2 text-[12px] text-indigo-300 hover:text-indigo-200 transition">
+                        Go to chapter {review.whereYouLeftOff.chapter} →
+                      </button>
+                    </div>
+                  )}
+                </>
               )}
             </div>
 

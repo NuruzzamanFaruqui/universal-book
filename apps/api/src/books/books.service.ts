@@ -4,6 +4,12 @@ import { AiService } from '../ai/ai.service';
 import { PaymentsService } from '../payments/payments.service';
 import { PRESENCE_WINDOW_MS } from '../users/users.service';
 
+const strip = (html: string | null | undefined) =>
+  (html || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+const countWords = (text: string) => (text.match(/\S+/g) || []).length;
+const escapeHtml = (s: string) =>
+  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
 @Injectable()
 export class BooksService {
   private readonly logger = new Logger(BooksService.name);
@@ -72,7 +78,9 @@ export class BooksService {
     });
     if (!book) throw new NotFoundException('Book not found');
 
-    const written = book.chapters.filter((c) => (c.content || '').trim().length > 0);
+    const written = book.chapters.filter(
+      (c) => c.kind === 'CHAPTER' && (c.content || '').trim().length > 0,
+    );
     if (written.length) {
       throw new BadRequestException(
         'This book already has writing in it. Start a new book to have AI draft one from scratch.',
@@ -92,7 +100,8 @@ export class BooksService {
       );
 
       const updated = await this.prisma.$transaction(async (tx) => {
-        await tx.chapter.deleteMany({ where: { bookId } });
+        // Only the chapters — front and back matter the author already has stay.
+        await tx.chapter.deleteMany({ where: { bookId, kind: 'CHAPTER' } });
         return tx.book.update({
           where: { id: bookId },
           data: {
@@ -106,6 +115,7 @@ export class BooksService {
             chapters: {
               create: (outline.chapters || []).map((ch: any, i: number) => ({
                 number: i + 1,
+                kind: 'CHAPTER' as const,
                 title: ch.title,
                 summary: ch.summary || ch.description || '',
               })),
@@ -212,6 +222,172 @@ export class BooksService {
     }
   }
 
+  // ─── Book metadata ────────────────────────────────────────────────────────
+
+  async updateBook(bookId: string, userId: string, data: {
+    title?: string; subtitle?: string; genre?: string; tone?: string;
+    audience?: string; synopsis?: string;
+  }) {
+    const book = await this.prisma.book.findFirst({ where: { id: bookId, userId } });
+    if (!book) throw new NotFoundException('Book not found');
+
+    return this.prisma.book.update({
+      where: { id: bookId },
+      data: {
+        ...(data.title !== undefined && { title: data.title.slice(0, 300) }),
+        ...(data.subtitle !== undefined && { subtitle: data.subtitle || null }),
+        ...(data.genre !== undefined && { genre: data.genre }),
+        ...(data.tone !== undefined && { tone: data.tone }),
+        ...(data.audience !== undefined && { audience: data.audience || null }),
+        ...(data.synopsis !== undefined && { synopsis: data.synopsis || null }),
+      },
+    });
+  }
+
+  /** Everything the author never had to fill in, read back out of the writing. */
+  async inferMetadata(bookId: string, userId: string) {
+    const book = await this.prisma.book.findFirst({
+      where: { id: bookId, userId },
+      include: { chapters: { where: { kind: 'CHAPTER' }, orderBy: { number: 'asc' } } },
+    });
+    if (!book) throw new NotFoundException('Book not found');
+
+    const sample = book.chapters
+      .map((c) => `${c.title}\n${strip(c.content)}`)
+      .join('\n\n')
+      .slice(0, 12000);
+
+    if (sample.replace(/\s/g, '').length < 200) {
+      throw new BadRequestException('Write a little more first — there is not enough here to read yet.');
+    }
+
+    const inferred = await this.aiService.inferMetadata(sample);
+
+    // Only fill blanks; never overwrite something the author chose.
+    await this.prisma.book.update({
+      where: { id: bookId },
+      data: {
+        ...(book.genre ? {} : { genre: inferred.genre || '' }),
+        ...(book.audience ? {} : { audience: inferred.audience || null }),
+        ...(book.tone ? {} : { tone: inferred.tone || '' }),
+      },
+    });
+
+    return inferred;
+  }
+
+  /** Continuity, pacing and voice across the whole manuscript. */
+  async reviewBook(bookId: string, userId: string) {
+    const book = await this.prisma.book.findFirst({
+      where: { id: bookId, userId },
+      include: { chapters: { where: { kind: 'CHAPTER' }, orderBy: { number: 'asc' } } },
+    });
+    if (!book) throw new NotFoundException('Book not found');
+
+    const chapters = book.chapters.map((c) => {
+      const plain = strip(c.content);
+      return { number: c.number, title: c.title, words: countWords(plain), text: plain };
+    });
+
+    if (chapters.every((c) => c.words === 0)) {
+      throw new BadRequestException('Nothing to review yet — write a chapter first.');
+    }
+
+    const review = await this.aiService.reviewManuscript(book.title || 'Untitled', chapters);
+
+    // Pacing is arithmetic, not judgement — compute it rather than ask.
+    const written = chapters.filter((c) => c.words > 0);
+    const avg = written.reduce((a, c) => a + c.words, 0) / (written.length || 1);
+    const outliers = written
+      .filter((c) => c.words < avg * 0.4 || c.words > avg * 2)
+      .map((c) => ({ number: c.number, title: c.title, words: c.words }));
+
+    return {
+      ...review,
+      pacing: { averageWords: Math.round(avg), chapters: written.length, outliers },
+    };
+  }
+
+  // ─── Front and back matter ────────────────────────────────────────────────
+
+  /**
+   * The parts of a book a first-time author does not know exist. Generated as
+   * editable templates rather than AI prose — they are structural, and the
+   * author's own details are already on file.
+   */
+  async generateMatter(bookId: string, userId: string) {
+    const book = await this.prisma.book.findFirst({
+      where: { id: bookId, userId },
+      include: { chapters: true, user: { select: { name: true, bio: true } } },
+    });
+    if (!book) throw new NotFoundException('Book not found');
+
+    const existing = new Set(
+      book.chapters.filter((c) => c.kind !== 'CHAPTER').map((c) => c.title),
+    );
+    const author = book.user.name || 'the author';
+    const year = new Date().getFullYear();
+    const chapters = book.chapters
+      .filter((c) => c.kind === 'CHAPTER')
+      .sort((a, b) => a.number - b.number);
+
+    const front = [
+      {
+        title: 'Title Page',
+        content: `<h1>${escapeHtml(book.title || 'Untitled')}</h1>` +
+          (book.subtitle ? `<p><em>${escapeHtml(book.subtitle)}</em></p>` : '') +
+          `<p>${escapeHtml(author)}</p>`,
+      },
+      {
+        title: 'Copyright',
+        content:
+          `<p>Copyright © ${year} ${escapeHtml(author)}. All rights reserved.</p>` +
+          '<p>No part of this book may be reproduced in any form without written permission ' +
+          'from the author, except brief quotations in a review.</p>' +
+          '<p>Published on Universal Book.</p>',
+      },
+      {
+        title: 'Contents',
+        content: chapters.length
+          ? `<ol>${chapters.map((c) => `<li>${escapeHtml(c.title || 'Untitled chapter')}</li>`).join('')}</ol>`
+          : '<p><em>Your chapters will be listed here as you write them.</em></p>',
+      },
+    ];
+
+    const back = [
+      {
+        title: 'About the Author',
+        content: book.user.bio
+          ? `<p>${escapeHtml(book.user.bio)}</p>`
+          : `<p>${escapeHtml(author)} wrote this book. Add a few lines here about who you are ` +
+            'and why you wrote it — readers look for this.</p>',
+      },
+      {
+        title: 'Acknowledgements',
+        content: '<p>Thank the people who helped you write this.</p>',
+      },
+    ];
+
+    const created = await this.prisma.$transaction(async (tx) => {
+      const rows: any[] = [];
+      for (const [i, m] of front.entries()) {
+        if (existing.has(m.title)) continue;
+        rows.push(await tx.chapter.create({
+          data: { bookId, kind: 'FRONT_MATTER', number: i + 1, title: m.title, content: m.content },
+        }));
+      }
+      for (const [i, m] of back.entries()) {
+        if (existing.has(m.title)) continue;
+        rows.push(await tx.chapter.create({
+          data: { bookId, kind: 'BACK_MATTER', number: i + 1, title: m.title, content: m.content },
+        }));
+      }
+      return rows;
+    });
+
+    return { created: created.length, sections: created };
+  }
+
   async generateChapterContent(bookId: string, chapterId: string, userId: string) {
     const book = await this.prisma.book.findFirst({
       where: { id: bookId, userId },
@@ -251,7 +427,7 @@ export class BooksService {
     });
 
     const allChapters = await this.prisma.chapter.findMany({
-      where: { bookId },
+      where: { bookId, kind: 'CHAPTER' },
     });
 
     const allDone = allChapters.every(c => c.content);

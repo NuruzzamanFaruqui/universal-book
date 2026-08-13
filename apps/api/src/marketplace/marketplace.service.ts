@@ -82,6 +82,9 @@ async getPublishedBookById(bookId: string, userId?: string) {
           include: {
             user: { select: { id: true, name: true, avatarUrl: true, bio: true } },
             chapters: {
+              // Front and back matter are part of the book but are not chapters:
+              // including them would make the title page the free preview.
+              where: { kind: 'CHAPTER' },
               select: { id: true, number: true, title: true, summary: true, content: true },
               orderBy: { number: 'asc' },
             },

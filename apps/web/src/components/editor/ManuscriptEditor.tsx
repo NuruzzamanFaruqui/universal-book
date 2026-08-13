@@ -5,10 +5,11 @@ import { EditorContent, useEditor, Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import Underline from '@tiptap/extension-underline';
-import { Loader2, Sparkles, Undo2 } from 'lucide-react';
+import { Loader2, Mic, Sparkles, Undo2 } from 'lucide-react';
 import { subscribeToChapter, leaveChapter } from '@/lib/realtime';
 import { POLL } from '@/lib/config';
 import { assist, AssistAction, ASSIST_LABELS } from '@/lib/writing-ai';
+import { DictationHandle, isSupported as dictationSupported, startDictation } from '@/lib/dictation';
 
 interface Props {
   bookId: string;
@@ -51,6 +52,12 @@ export default function ManuscriptEditor({
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onSaveRef = useRef(onSave);
   useEffect(() => { onSaveRef.current = onSave; }, [onSave]);
+
+  const [dictating, setDictating] = useState(false);
+  const [interim, setInterim] = useState('');
+  const dictation = useRef<DictationHandle | null>(null);
+  const canDictate = useRef(false);
+  useEffect(() => { canDictate.current = dictationSupported(); }, []);
 
   const isRemote = useRef(false);
   /** Set immediately after an AI replacement, so one undo restores the original. */
@@ -266,6 +273,37 @@ export default function ManuscriptEditor({
     }
   }, [editor, bookTitle, tone, voiceSample, scheduleSave, report]);
 
+  const toggleDictation = useCallback(() => {
+    if (dictation.current) {
+      dictation.current.stop();
+      dictation.current = null;
+      setDictating(false);
+      setInterim('');
+      return;
+    }
+    if (!editor) return;
+
+    const handle = startDictation({
+      onInterim: setInterim,
+      onFinal: (text) => {
+        setInterim('');
+        // Sentence case and a trailing space, so speech reads as prose.
+        const cleaned = text.charAt(0).toUpperCase() + text.slice(1);
+        const punctuated = /[.!?]$/.test(cleaned) ? cleaned : cleaned + '.';
+        editor.chain().focus().insertContent(punctuated + ' ').run();
+        scheduleSave(editor);
+        report(editor);
+      },
+      onError: (m) => { setError(m); setTimeout(() => setError(''), 6000); setDictating(false); },
+      onEnd: () => { setDictating(false); setInterim(''); dictation.current = null; },
+    });
+    dictation.current = handle;
+    setDictating(!!handle);
+  }, [editor, scheduleSave, report]);
+
+  // Never leave the microphone running after the editor goes away.
+  useEffect(() => () => { dictation.current?.stop(); }, []);
+
   if (!editor) {
     return (
       <div className="flex-1 flex items-center justify-center text-slate-500 text-sm">
@@ -334,6 +372,22 @@ export default function ManuscriptEditor({
           {btn('↩', false, () => editor.chain().focus().undo().run(), 'Undo')}
           {btn('↪', false, () => editor.chain().focus().redo().run(), 'Redo')}
 
+          {canDictate.current && (
+            <>
+              <div className="w-px h-5 bg-slate-600 mx-1.5" />
+              <button
+                onClick={toggleDictation}
+                title={dictating ? 'Stop dictating' : 'Dictate — talk and it becomes prose'}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-sm transition ${
+                  dictating ? 'bg-red-500/20 text-red-300' : 'text-slate-300 hover:text-white hover:bg-slate-700'
+                }`}
+              >
+                <Mic size={14} className={dictating ? 'animate-pulse' : ''} />
+                {dictating ? 'Listening' : 'Dictate'}
+              </button>
+            </>
+          )}
+
           <div className="flex-1" />
 
           {activeUsers.length > 0 && (
@@ -379,6 +433,18 @@ export default function ManuscriptEditor({
         </div>
         <div className="h-24" />
       </div>
+
+      {dictating && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2.5 max-w-lg
+                        bg-[#101725] border border-red-500/40 rounded-full px-4 py-2 shadow-2xl">
+          <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse shrink-0" />
+          <span className="text-[13px] text-slate-300 truncate">
+            {interim || 'Listening — just talk.'}
+          </span>
+          <button onClick={toggleDictation}
+            className="ml-1 shrink-0 text-[12px] text-slate-400 hover:text-white transition">Stop</button>
+        </div>
+      )}
 
       {/* selection toolbar */}
       {selAnchor && !busy && (
