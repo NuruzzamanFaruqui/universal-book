@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { EditorContent, useEditor, Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -23,6 +23,11 @@ interface Props {
   tone?: string;
   /** A sample of the author's own prose, used by "In my voice". */
   voiceSample?: string;
+  /** Rendered inside the page itself, above the body — the chapter or section
+   *  heading, laid out as it will print rather than in a strip above it. */
+  pageHeader?: ReactNode;
+  /** What the empty body invites — differs for a title page and a chapter. */
+  bodyPlaceholder?: string;
   onSave?: (html: string) => Promise<void> | void;
   onStats?: (stats: { words: number; chars: number }) => void;
   readOnly?: boolean;
@@ -36,7 +41,7 @@ interface Anchor { top: number; left: number; bottom: number }
 
 export default function ManuscriptEditor({
   bookId, chapterId, initialContent = '', bookTitle, tone, voiceSample,
-  chapterNumber = 1, sectionDepth = 3,
+  chapterNumber = 1, sectionDepth = 3, pageHeader, bodyPlaceholder,
   onSave, onStats, readOnly = false, userId = '',
 }: Props) {
   const [saving, setSaving] = useState(false);
@@ -78,7 +83,9 @@ export default function ManuscriptEditor({
       Underline,
       Placeholder.configure({
         placeholder: ({ node }) =>
-          node.type.name === 'heading' ? 'Section heading…' : "Start writing, or press / for help…",
+          node.type.name === 'heading'
+            ? 'Section heading…'
+            : (bodyPlaceholder || 'Start writing, or press / for help…'),
       }),
     ],
     content: initialContent || '<p></p>',
@@ -451,6 +458,7 @@ export default function ManuscriptEditor({
       {/* the page */}
       <div className="flex-1 overflow-y-auto bg-[#0A0F18] px-6 pt-8">
         <div className="max-w-[42rem] mx-auto bg-[#FDFCF9] rounded-sm shadow-[0_1px_3px_rgba(0,0,0,.5),0_18px_50px_rgba(0,0,0,.35)] px-[3.5rem] py-16 min-h-[calc(100vh-11rem)]">
+          {pageHeader}
           <div
             className={numbered ? 'numbered' : undefined}
             style={numbered ? ({ counterReset: `ch ${chapterNumber} s2 0 s3 0 s4 0` } as any) : undefined}

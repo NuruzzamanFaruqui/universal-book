@@ -51,6 +51,7 @@ export default function EditChapterPage() {
   const [metaBusy, setMetaBusy] = useState(false);
   const [matterBusy, setMatterBusy] = useState(false);
   const [titleDraft, setTitleDraft] = useState('');
+  const [bookSubtitle, setBookSubtitle] = useState('');
 
   const [showNotes, setShowNotes] = useState(false);
   const [renaming, setRenaming] = useState<string | null>(null);
@@ -75,6 +76,7 @@ export default function EditChapterPage() {
         const data = await bookRes.json();
         setBook(data);
         setTitleDraft(data.title || '');
+        setBookSubtitle(data.subtitle || '');
         if (data.chapters?.length) {
           setSelectedChapter((prev: any) =>
             prev
@@ -138,6 +140,18 @@ export default function EditChapterPage() {
       body: JSON.stringify({ title: next }),
     });
     setBook((b: any) => b && { ...b, title: next });
+  };
+
+  const saveBookSubtitle = async () => {
+    const next = bookSubtitle.trim();
+    if (next === (book?.subtitle || '')) return;
+    const token = await getFreshToken();
+    await fetch(`${API_URL}/api/books/${bookId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ subtitle: next }),
+    });
+    setBook((b: any) => b && { ...b, subtitle: next });
   };
 
   const runInfer = async () => {
@@ -519,47 +533,6 @@ export default function EditChapterPage() {
             </div>
           ) : selectedChapter ? (
             <>
-              {/* Title and subtitle are fields, not markup — the body never
-                  repeats them, so nothing appears twice on the page. */}
-              <div className="bg-slate-800/60 border-b border-slate-700 px-6 py-3 shrink-0">
-                <div className="max-w-[42rem] mx-auto space-y-1.5">
-                  <div className="flex items-baseline gap-2">
-                    {selectedChapter.kind === 'CHAPTER' && (
-                      <span className="font-mono text-[11px] text-slate-500 shrink-0 pt-0.5">
-                        Chapter {selectedChapter.number}
-                      </span>
-                    )}
-                    <input
-                      value={chapTitle}
-                      onChange={e => setChapTitle(e.target.value)}
-                      onBlur={() => saveChapterHeading('title', chapTitle)}
-                      onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-                      placeholder={selectedChapter.kind === 'CHAPTER' ? 'Chapter title' : 'Section title'}
-                      aria-label="Chapter title"
-                      className="flex-1 bg-transparent text-[17px] font-semibold text-white
-                                 placeholder-slate-600 border-b border-transparent hover:border-slate-600
-                                 focus:border-blue-500 focus:outline-none pb-0.5 transition-colors"
-                    />
-                  </div>
-                  {selectedChapter.kind === 'CHAPTER' && (
-                    <input
-                      value={chapSubtitle}
-                      onChange={e => setChapSubtitle(e.target.value)}
-                      onBlur={() => saveChapterHeading('subtitle', chapSubtitle)}
-                      onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-                      placeholder="Subtitle — optional"
-                      aria-label="Chapter subtitle"
-                      className="w-full bg-transparent text-[13px] text-slate-400 italic
-                                 placeholder-slate-600 border-b border-transparent hover:border-slate-700
-                                 focus:border-blue-500 focus:outline-none pb-0.5 transition-colors"
-                    />
-                  )}
-                  {selectedChapter.kind !== 'CHAPTER' && selectedChapter.summary && (
-                    <p className="text-[12px] text-slate-500 leading-relaxed">{selectedChapter.summary}</p>
-                  )}
-                </div>
-              </div>
-
               <ManuscriptEditor
                 key={selectedChapter.id}
                 bookId={bookId}
@@ -573,6 +546,87 @@ export default function EditChapterPage() {
                 sectionDepth={selectedChapter.kind === 'CHAPTER' ? (book.sectionDepth ?? 3) : 0}
                 onSave={handleSave}
                 onStats={s => setLiveWords(s.words)}
+                bodyPlaceholder={
+                  selectedChapter.slug === 'title-page'
+                    ? 'Publisher or edition line — optional'
+                    : selectedChapter.kind === 'CHAPTER'
+                      ? 'Start writing, or press / for help…'
+                      : `Write your ${(selectedChapter.title || 'section').toLowerCase()} here…`
+                }
+                pageHeader={
+                  selectedChapter.slug === 'title-page' ? (
+                    /* An actual title page: what the reader will see, edited in place. */
+                    <div className="text-center mb-16 mt-8">
+                      <input
+                        value={titleDraft}
+                        onChange={e => setTitleDraft(e.target.value)}
+                        onBlur={saveTitle}
+                        onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                        placeholder="Your book's title"
+                        aria-label="Book title"
+                        className="w-full text-center bg-transparent text-[2.1rem] leading-tight font-bold
+                                   text-[#1b1b18] placeholder-[#c4c0b4] focus:outline-none
+                                   border-b border-transparent focus:border-[#d8d4c8] pb-1"
+                      />
+                      <input
+                        value={bookSubtitle}
+                        onChange={e => setBookSubtitle(e.target.value)}
+                        onBlur={saveBookSubtitle}
+                        onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                        placeholder="Subtitle — optional"
+                        aria-label="Book subtitle"
+                        className="w-full text-center bg-transparent text-[1.05rem] italic mt-3
+                                   text-[#55544e] placeholder-[#c4c0b4] focus:outline-none
+                                   border-b border-transparent focus:border-[#d8d4c8] pb-1"
+                      />
+                      <p className="mt-14 text-[1rem] text-[#1b1b18]">{user?.name || 'Your name'}</p>
+                      <p className="mt-10 text-[11px] text-[#a8a49a] font-sans not-italic">
+                        Type directly on the page. This is how the title page will look.
+                      </p>
+                    </div>
+                  ) : selectedChapter.kind === 'CHAPTER' ? (
+                    <div className="mb-9">
+                      <div className="text-[11px] uppercase tracking-[.18em] text-[#a8a49a] font-sans mb-2">
+                        Chapter {selectedChapter.number}
+                      </div>
+                      <input
+                        value={chapTitle}
+                        onChange={e => setChapTitle(e.target.value)}
+                        onBlur={() => saveChapterHeading('title', chapTitle)}
+                        onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                        placeholder="Chapter title"
+                        aria-label="Chapter title"
+                        className="w-full bg-transparent text-[1.95rem] leading-tight font-bold tracking-tight
+                                   text-[#1b1b18] placeholder-[#c4c0b4] focus:outline-none
+                                   border-b border-transparent focus:border-[#d8d4c8] pb-0.5"
+                      />
+                      <input
+                        value={chapSubtitle}
+                        onChange={e => setChapSubtitle(e.target.value)}
+                        onBlur={() => saveChapterHeading('subtitle', chapSubtitle)}
+                        onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                        placeholder="Subtitle — optional"
+                        aria-label="Chapter subtitle"
+                        className="w-full bg-transparent text-[1.05rem] italic mt-1.5
+                                   text-[#55544e] placeholder-[#c4c0b4] focus:outline-none
+                                   border-b border-transparent focus:border-[#d8d4c8] pb-0.5"
+                      />
+                      <div className="mt-7 border-b border-[#e6e3db]" />
+                    </div>
+                  ) : (
+                    <div className="mb-8">
+                      <h1 className="text-[1.7rem] font-bold tracking-tight text-[#1b1b18]">
+                        {selectedChapter.title}
+                      </h1>
+                      {selectedChapter.summary && !wordsIn(selectedChapter.content) && (
+                        <p className="mt-2 text-[12.5px] text-[#a8a49a] font-sans leading-relaxed">
+                          {selectedChapter.summary}
+                        </p>
+                      )}
+                      <div className="mt-6 border-b border-[#e6e3db]" />
+                    </div>
+                  )
+                }
               />
             </>
           ) : (
