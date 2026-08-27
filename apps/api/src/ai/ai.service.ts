@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import Anthropic from '@anthropic-ai/sdk';
 import { RuntimeConfigService } from '../config/runtime-config.service';
 
@@ -6,6 +6,7 @@ const DEFAULT_MODEL = 'claude-sonnet-4-20250514';
 
 @Injectable()
 export class AiService {
+  private readonly logger = new Logger(AiService.name);
   private client: Anthropic | null = null;
   private clientKey: string | null = null;
 
@@ -31,6 +32,38 @@ export class AiService {
 
   private async model(): Promise<string> {
     return (await this.config.get('AI_MODEL')) || DEFAULT_MODEL;
+  }
+
+  /**
+   * Every call to the provider goes through here.
+   *
+   * Without it an expired key, a rate limit or an overloaded model all reach the
+   * author as a bare 500, which tells them nothing and looks like our bug.
+   */
+  private async call<T>(fn: () => Promise<T>): Promise<T> {
+    try {
+      return await fn();
+    } catch (err: any) {
+      const status = err?.status ?? err?.statusCode;
+      const detail = err?.error?.error?.message || err?.message || 'unknown error';
+      this.logger.error(`Anthropic call failed (${status ?? 'no status'}): ${detail}`);
+
+      if (status === 401 || status === 403) {
+        throw new ServiceUnavailableException(
+          'The Anthropic API key was rejected. Check it in Admin → API Management.',
+        );
+      }
+      if (status === 429) {
+        throw new ServiceUnavailableException('The AI is rate limited right now. Try again in a moment.');
+      }
+      if (status === 529 || status === 503) {
+        throw new ServiceUnavailableException('The AI is busy right now. Try again in a moment.');
+      }
+      if (status === 400) {
+        throw new BadRequestException(`The AI could not handle that request: ${detail}`);
+      }
+      throw new ServiceUnavailableException('The AI is unavailable right now. Try again in a moment.');
+    }
   }
 
   /** Text out of a response, tolerating non-text blocks. */
@@ -64,7 +97,7 @@ export class AiService {
   }
 
   async generateTitles(topic: string, description: string, genre: string, tone: string): Promise<any> {
-    const message = await (await this.anthropic()).messages.create({
+    const message = await this.call(async () => (await this.anthropic()).messages.create({
       model: await this.model(),
       max_tokens: 1000,
       messages: [{
@@ -86,13 +119,13 @@ Return ONLY a JSON array with this exact format:
 
 Make titles compelling, memorable, and marketable. No extra text.`
       }],
-    });
+    }));
 
     return { titles: this.parseJson(this.text(message), 'title options') };
   }
 
   async generateOutlines(topic: string, description: string, genre: string, tone: string, audience: string, title: string, chaptersCount: number): Promise<any> {
-    const message = await (await this.anthropic()).messages.create({
+    const message = await this.call(async () => (await this.anthropic()).messages.create({
       model: await this.model(),
       max_tokens: 3000,
       messages: [{
@@ -125,7 +158,7 @@ For non-fiction/academic: include 2-4 sections per chapter.
 For fiction: sections are optional.
 No extra text outside JSON.`
       }],
-    });
+    }));
 
     return { outlines: this.parseJson(this.text(message), 'outlines') };
   }
@@ -133,7 +166,7 @@ No extra text outside JSON.`
   async generateSynopses(topic: string, title: string, genre: string, tone: string, audience: string, outline: any): Promise<any> {
     const chapterList = outline?.chapters?.map((c: any, i: number) => `${i+1}. ${c.title}`).join('\n') || '';
 
-    const message = await (await this.anthropic()).messages.create({
+    const message = await this.call(async () => (await this.anthropic()).messages.create({
       model: await this.model(),
       max_tokens: 1500,
       messages: [{
@@ -153,13 +186,13 @@ Return ONLY a JSON array of 3 strings:
 Each synopsis should be 100-150 words, compelling, and make readers want to buy the book.
 No extra text outside JSON.`
       }],
-    });
+    }));
 
     return { synopses: this.parseJson(this.text(message), 'synopses') };
   }
 
   async generateOutline(topic: string, genre: string, tone: string, audience: string, chaptersCount: number): Promise<any> {
-    const message = await (await this.anthropic()).messages.create({
+    const message = await this.call(async () => (await this.anthropic()).messages.create({
       model: await this.model(),
       max_tokens: 2000,
       messages: [{
@@ -187,7 +220,7 @@ Return JSON:
 }
 No extra text.`
       }],
-    });
+    }));
 
     return this.parseJson(this.text(message), 'the outline');
   }
@@ -212,7 +245,7 @@ No extra text.`
       ? `\nPrevious chapter summary: ${previousChapterSummary}`
       : '';
 
-    const message = await (await this.anthropic()).messages.create({
+    const message = await this.call(async () => (await this.anthropic()).messages.create({
       model: await this.model(),
       max_tokens: 4000,
       messages: [{
@@ -245,7 +278,7 @@ shown above the text, so writing it again duplicates it on the page.
 
 Write the full chapter now:`
       }],
-    });
+    }));
 
     return this.text(message);
   }
@@ -258,7 +291,7 @@ Write the full chapter now:`
   async draftFromNotes(input: {
     notes: string; bookTitle: string; chapterTitle: string; tone: string; audience: string;
   }): Promise<string> {
-    const message = await (await this.anthropic()).messages.create({
+    const message = await this.call(async () => (await this.anthropic()).messages.create({
       model: await this.model(),
       max_tokens: 4000,
       system:
@@ -279,7 +312,7 @@ My notes:
 
 Write this chapter from them.`,
       }],
-    });
+    }));
     return this.text(message).replace(/```html|```/g, '').trim();
   }
 
@@ -297,7 +330,7 @@ Write this chapter from them.`,
     context: string;
     contextLabel: string;
   }): Promise<string> {
-    const message = await (await this.anthropic()).messages.create({
+    const message = await this.call(async () => (await this.anthropic()).messages.create({
       model: await this.model(),
       max_tokens: 2000,
       system:
@@ -316,7 +349,7 @@ Write this chapter from them.`,
           content: `${input.context ? `Here is ${input.contextLabel}:\n"""${input.context}"""\n\n` : ''}${input.question}`,
         },
       ],
-    });
+    }));
     return this.text(message).trim();
   }
 
@@ -325,7 +358,7 @@ Write this chapter from them.`,
     genre: string; subGenre?: string; audience: string; tone: string;
     titles: string[]; synopsis: string; keywords: string[];
   }> {
-    const message = await (await this.anthropic()).messages.create({
+    const message = await this.call(async () => (await this.anthropic()).messages.create({
       model: await this.model(),
       max_tokens: 1500,
       messages: [{
@@ -345,7 +378,7 @@ Return ONLY JSON:
   "keywords": ["Five search keywords"]
 }`,
       }],
-    });
+    }));
     return this.parseJson(this.text(message), 'the book metadata');
   }
 
@@ -366,7 +399,7 @@ Return ONLY JSON:
       .map(c => `--- Chapter ${c.number}: ${c.title} (${c.words} words) ---\n${c.text.slice(0, 3000)}`)
       .join('\n\n');
 
-    const message = await (await this.anthropic()).messages.create({
+    const message = await this.call(async () => (await this.anthropic()).messages.create({
       model: await this.model(),
       max_tokens: 2000,
       messages: [{
@@ -387,7 +420,7 @@ Return ONLY JSON:
   "whereYouLeftOff": { "chapter": 3, "note": "Stops mid-argument after introducing tacit knowledge without defining it." }
 }`,
       }],
-    });
+    }));
     return this.parseJson(this.text(message), 'the manuscript review');
   }
 
@@ -410,7 +443,7 @@ Return ONLY JSON:
     const instruction = instructions[action];
     if (!instruction) throw new BadRequestException(`Unknown action "${action}".`);
 
-    const message = await (await this.anthropic()).messages.create({
+    const message = await this.call(async () => (await this.anthropic()).messages.create({
       model: await this.model(),
       max_tokens: 1200,
       system:
@@ -426,7 +459,7 @@ ${context?.voiceSample ? `\nThe author's voice, for reference:\n"""${context.voi
 Passage:
 """${text}"""`,
       }],
-    });
+    }));
 
     return this.text(message).trim();
   }
@@ -436,7 +469,7 @@ Passage:
    * a mirror of what exists rather than a plan to obey.
    */
   async describeShape(title: string, chapters: { number: number; title: string; words: number; excerpt: string }[]) {
-    const message = await (await this.anthropic()).messages.create({
+    const message = await this.call(async () => (await this.anthropic()).messages.create({
       model: await this.model(),
       max_tokens: 1200,
       messages: [{
@@ -452,12 +485,12 @@ Return ONLY JSON:
   "suggestedNext": { "title": "Chapter title", "why": "One sentence" }
 }`,
       }],
-    });
+    }));
     return this.parseJson(this.text(message), 'the book shape');
   }
 
   async importAndParseBook(content: string, fileName: string, title: string, genre: string): Promise<any> {
-    const message = await (await this.anthropic()).messages.create({
+    const message = await this.call(async () => (await this.anthropic()).messages.create({
       model: await this.model(),
       max_tokens: 4000,
       messages: [{
@@ -487,7 +520,7 @@ Return ONLY JSON:
 Parse as many chapters as you can detect. Use <p> tags for paragraphs, <h2> for sections.
 No extra text outside JSON.`
       }],
-    });
+    }));
 
     return this.parseJson(this.text(message), 'the imported manuscript');
   }
