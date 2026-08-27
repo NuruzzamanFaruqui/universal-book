@@ -546,10 +546,10 @@ export default function EditChapterPage() {
         {/* the page */}
         <main className="flex-1 min-w-0 flex flex-col">
           {selectedChapter?.slug === 'contents' ? (
-            <div className="flex-1 overflow-y-auto bg-[#0A0F18] px-6 pt-8">
-              <div className="max-w-[42rem] mx-auto bg-[#FDFCF9] text-[#1b1b18] rounded-sm
+            <div className="flex-1 overflow-y-auto bg-[#0A0F18] px-4 pt-6">
+              <div className="w-full max-w-[72rem] mx-auto bg-[#FDFCF9] text-[#1b1b18] rounded-sm
                               shadow-[0_1px_3px_rgba(0,0,0,.5),0_18px_50px_rgba(0,0,0,.35)]
-                              px-[3.5rem] py-16 min-h-[calc(100vh-11rem)] font-serif">
+                              px-[clamp(2rem,5vw,5rem)] py-14 min-h-[calc(100vh-9rem)] font-serif">
                 <h1 className="text-[1.95rem] font-bold tracking-tight mb-1">Contents</h1>
                 <p className="text-[13px] text-[#8a8880] mb-8 font-sans">
                   Built from your chapters and sections. Always current — there is nothing to edit here.
@@ -708,7 +708,7 @@ export default function EditChapterPage() {
           >
             <div
               onPointerDown={onPointerDown}
-              onDoubleClick={() => setPanelWidth(420)}
+              onDoubleClick={() => setPanelWidth(520)}
               title="Drag to resize · double-click to reset"
               className="absolute left-0 top-0 bottom-0 w-1.5 -ml-0.5 z-20 cursor-col-resize
                          hover:bg-indigo-500/40 transition-colors"

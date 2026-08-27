@@ -70,7 +70,7 @@ export default function AssistantChat({
     const el = boxRef.current;
     if (!el) return;
     el.style.height = 'auto';
-    el.style.height = Math.min(el.scrollHeight, 220) + 'px';
+    el.style.height = Math.max(150, Math.min(el.scrollHeight, 420)) + 'px';
   };
 
   const send = async () => {
@@ -138,7 +138,7 @@ export default function AssistantChat({
     <div className="flex flex-col h-full min-h-0">
 
       {/* transcript */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 min-h-0">
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 min-h-0 shrink">
         {loading ? (
           <p className="text-[12.5px] text-slate-500">Loading your conversation…</p>
         ) : messages.length === 0 ? (
@@ -194,7 +194,7 @@ export default function AssistantChat({
       )}
 
       {/* composer */}
-      <div className="border-t border-slate-700/60 p-3 space-y-2">
+      <div className="border-t border-slate-700/60 p-3 space-y-2 shrink-0">
         <div className="flex items-center gap-1 flex-wrap">
           {CONTEXTS.map(c => {
             const unavailable =
@@ -224,7 +224,7 @@ export default function AssistantChat({
           )}
         </div>
 
-        <div className="flex items-end gap-2 bg-slate-900/70 border border-slate-700 rounded-xl px-2.5 py-2
+        <div className="flex items-end gap-2 bg-slate-900/70 border border-slate-700 rounded-xl px-3 py-2.5
                         focus-within:border-indigo-500 transition-colors">
           <textarea
             ref={boxRef}
@@ -233,11 +233,12 @@ export default function AssistantChat({
             onKeyDown={e => {
               if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
             }}
-            rows={2}
+            rows={6}
             placeholder="Ask about your book, or ask for writing…"
             aria-label="Message the assistant"
-            className="flex-1 bg-transparent resize-none text-[13.5px] text-slate-200
-                       placeholder-slate-600 focus:outline-none leading-relaxed max-h-[220px]"
+            className="flex-1 bg-transparent resize-none text-[14px] text-slate-200
+                       placeholder-slate-600 focus:outline-none leading-relaxed
+                       min-h-[150px] max-h-[420px]"
           />
           <div className="flex items-center gap-0.5 shrink-0 pb-0.5">
             {canDictate.current && (

@@ -19,7 +19,7 @@ interface Stored {
   tab: string;
 }
 
-const DEFAULTS: Stored = { outlineMode: 'auto', panelWidth: 420, tab: 'assistant' };
+const DEFAULTS: Stored = { outlineMode: 'auto', panelWidth: 520, tab: 'assistant' };
 
 export const PANEL_MIN = 320;
 export const PANEL_MAX = 900;

@@ -488,8 +488,8 @@ export default function ManuscriptEditor({
       )}
 
       {/* the page */}
-      <div className="flex-1 overflow-y-auto bg-[#0A0F18] px-6 pt-8">
-        <div className="max-w-[42rem] mx-auto bg-[#FDFCF9] rounded-sm shadow-[0_1px_3px_rgba(0,0,0,.5),0_18px_50px_rgba(0,0,0,.35)] px-[3.5rem] py-16 min-h-[calc(100vh-11rem)]">
+      <div className="flex-1 overflow-y-auto bg-[#0A0F18] px-4 pt-6">
+        <div className="w-full max-w-[72rem] mx-auto bg-[#FDFCF9] rounded-sm shadow-[0_1px_3px_rgba(0,0,0,.5),0_18px_50px_rgba(0,0,0,.35)] px-[clamp(2rem,5vw,5rem)] py-14 min-h-[calc(100vh-9rem)]">
           {pageHeader}
           <div
             className={numbered ? 'numbered' : undefined}
