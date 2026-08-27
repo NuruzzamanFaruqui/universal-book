@@ -128,6 +128,28 @@ export class BooksController {
     return { chapters: await this.booksService.buildContents(bookId) };
   }
 
+  // ─── Conversation ─────────────────────────────────────────────────────────
+
+  @Get(':bookId/chat')
+  async getChat(@Param('bookId') bookId: string, @Request() req: any) {
+    return { messages: await this.booksService.getChat(bookId, req.user.id) };
+  }
+
+  @Post(':bookId/chat')
+  @Throttle({ default: { ttl: 60_000, limit: 30 } })
+  async chat(
+    @Param('bookId') bookId: string,
+    @Body() body: { message: string; contextKind?: 'book' | 'chapter' | 'selection'; chapterId?: string; selection?: string },
+    @Request() req: any,
+  ) {
+    return this.booksService.chat(bookId, req.user.id, body);
+  }
+
+  @Delete(':bookId/chat')
+  async clearChat(@Param('bookId') bookId: string, @Request() req: any) {
+    return this.booksService.clearChat(bookId, req.user.id);
+  }
+
   @Post(':bookId/infer')
   @Throttle(AI_LIMIT)
   async infer(@Param('bookId') bookId: string, @Request() req: any) {

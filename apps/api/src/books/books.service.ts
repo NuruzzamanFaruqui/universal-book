@@ -486,6 +486,106 @@ export class BooksService {
     });
   }
 
+  // ─── Conversation ─────────────────────────────────────────────────────────
+
+  async getChat(bookId: string, userId: string) {
+    await this.assertCanEditBook(bookId, userId);
+    return this.prisma.bookChatMessage.findMany({
+      where: { bookId },
+      orderBy: { createdAt: 'asc' },
+      take: 200,
+      select: { id: true, role: true, content: true, contextKind: true, createdAt: true },
+    });
+  }
+
+  async clearChat(bookId: string, userId: string) {
+    await this.assertCanEditBook(bookId, userId);
+    await this.prisma.bookChatMessage.deleteMany({ where: { bookId } });
+    return { cleared: true };
+  }
+
+  /**
+   * One turn of conversation about the book.
+   *
+   * The context the model sees is chosen by the author — the selected passage,
+   * the open chapter, or the whole manuscript — so a question about one
+   * paragraph is not answered from 40,000 words of unrelated text.
+   */
+  async chat(bookId: string, userId: string, input: {
+    message: string;
+    contextKind?: 'book' | 'chapter' | 'selection';
+    chapterId?: string;
+    selection?: string;
+  }) {
+    await this.assertCanEditBook(bookId, userId);
+
+    const question = (input.message || '').trim();
+    if (!question) throw new BadRequestException('Ask me something first.');
+
+    const book = await this.prisma.book.findUnique({
+      where: { id: bookId },
+      select: { title: true, subtitle: true, genre: true, tone: true, audience: true },
+    });
+
+    const kind = input.contextKind || 'book';
+    let context = '';
+    let contextLabel = 'this book';
+
+    if (kind === 'selection' && input.selection?.trim()) {
+      context = input.selection.slice(0, 6000);
+      contextLabel = 'the passage the author has selected';
+    } else if (kind === 'chapter' && input.chapterId) {
+      const chapter = await this.prisma.chapter.findFirst({
+        where: { id: input.chapterId, bookId },
+        select: { number: true, title: true, content: true },
+      });
+      if (chapter) {
+        context = `Chapter ${chapter.number}: ${chapter.title}\n${strip(chapter.content)}`.slice(0, 12000);
+        contextLabel = `chapter ${chapter.number} of this book`;
+      }
+    } else {
+      const chapters = await this.prisma.chapter.findMany({
+        where: { bookId, kind: 'CHAPTER' },
+        orderBy: { number: 'asc' },
+        select: { number: true, title: true, content: true },
+      });
+      // Enough of each chapter to reason across the book without sending all of it.
+      context = chapters
+        .map((c) => `Chapter ${c.number}: ${c.title}\n${strip(c.content).slice(0, 1500)}`)
+        .join('\n\n')
+        .slice(0, 20000);
+      contextLabel = 'the whole manuscript so far';
+    }
+
+    const history = await this.prisma.bookChatMessage.findMany({
+      where: { bookId },
+      orderBy: { createdAt: 'asc' },
+      take: 40,
+      select: { role: true, content: true },
+    });
+
+    const reply = await this.aiService.chatAboutBook({
+      question,
+      history,
+      bookTitle: book?.title || 'Untitled',
+      context,
+      contextLabel,
+    });
+
+    // Only recorded once the model has answered — a failed turn should not
+    // leave a dangling question in the thread.
+    const [, assistant] = await this.prisma.$transaction([
+      this.prisma.bookChatMessage.create({
+        data: { bookId, userId, role: 'USER', content: question, contextKind: kind, chapterId: input.chapterId ?? null },
+      }),
+      this.prisma.bookChatMessage.create({
+        data: { bookId, userId, role: 'ASSISTANT', content: reply, contextKind: kind, chapterId: input.chapterId ?? null },
+      }),
+    ]);
+
+    return assistant;
+  }
+
   // ─── Book metadata ────────────────────────────────────────────────────────
 
   async updateBook(bookId: string, userId: string, data: {

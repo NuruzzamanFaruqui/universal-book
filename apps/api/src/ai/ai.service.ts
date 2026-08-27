@@ -283,6 +283,43 @@ Write this chapter from them.`,
     return this.text(message).replace(/```html|```/g, '').trim();
   }
 
+  /**
+   * Conversation about a book in progress.
+   *
+   * Grounded in what the author has actually written, and told to say so when
+   * the manuscript does not answer the question rather than inventing material
+   * the author will later find in their own book.
+   */
+  async chatAboutBook(input: {
+    question: string;
+    history: { role: 'USER' | 'ASSISTANT'; content: string }[];
+    bookTitle: string;
+    context: string;
+    contextLabel: string;
+  }): Promise<string> {
+    const message = await (await this.anthropic()).messages.create({
+      model: await this.model(),
+      max_tokens: 2000,
+      system:
+        `You are helping an author write "${input.bookTitle}". You can see ${input.contextLabel}, ` +
+        'quoted below. Answer from what is actually written there — if it does not contain the ' +
+        'answer, say so plainly instead of inventing material the author will later hunt for in ' +
+        'their own manuscript. When they ask for prose, write it in their voice as shown by the ' +
+        'text. Be direct and brief; this appears in a side panel, not an essay.',
+      messages: [
+        ...input.history.slice(-16).map((m) => ({
+          role: m.role === 'USER' ? ('user' as const) : ('assistant' as const),
+          content: m.content,
+        })),
+        {
+          role: 'user' as const,
+          content: `${input.context ? `Here is ${input.contextLabel}:\n"""${input.context}"""\n\n` : ''}${input.question}`,
+        },
+      ],
+    });
+    return this.text(message).trim();
+  }
+
   /** Reads the manuscript and names what the author never had to declare. */
   async inferMetadata(sample: string): Promise<{
     genre: string; subGenre?: string; audience: string; tone: string;

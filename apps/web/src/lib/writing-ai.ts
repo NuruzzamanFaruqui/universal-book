@@ -153,3 +153,30 @@ export const reorderChapters = (bookId: string, orderedIds: string[]) =>
 /** Shapes the author's own notes into a chapter. Included, not billed. */
 export const draftFromNotes = (bookId: string, chapterId: string, notes: string) =>
   send<any>(`/api/books/${bookId}/chapters/${chapterId}/from-notes`, 'POST', { notes });
+
+// ─── Conversation ───────────────────────────────────────────────────────────
+
+export type ChatContext = 'book' | 'chapter' | 'selection';
+
+export interface ChatMessage {
+  id: string;
+  role: 'USER' | 'ASSISTANT';
+  content: string;
+  contextKind?: string | null;
+  createdAt: string;
+}
+
+export async function fetchChat(bookId: string): Promise<ChatMessage[]> {
+  const headers = await authHeader();
+  const res = await fetch(`${API_URL}/api/books/${bookId}/chat`, { headers });
+  if (!res.ok) return [];
+  return (await res.json()).messages ?? [];
+}
+
+export const sendChat = (
+  bookId: string,
+  body: { message: string; contextKind: ChatContext; chapterId?: string; selection?: string },
+) => post<ChatMessage>(`/api/books/${bookId}/chat`, body);
+
+export const clearChat = (bookId: string) =>
+  send<{ cleared: boolean }>(`/api/books/${bookId}/chat`, 'DELETE');

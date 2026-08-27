@@ -61,6 +61,7 @@ model User {
   refreshTokens          RefreshToken[]
   passwordResets         PasswordResetToken[]
   editorPresence         EditorPresence[]
+  bookChatMessages       BookChatMessage[]
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
@@ -105,29 +106,30 @@ model EditorPresence {
 }
 
 model Book {
-  id             String          @id @default(uuid())
+  id             String            @id @default(uuid())
   title          String
   subtitle       String?
   synopsis       String?
   genre          String
   tone           String
   audience       String?
-  numbering      NumberingStyle  @default(DECIMAL)
+  numbering      NumberingStyle    @default(DECIMAL)
   // 0 = no numbered sections, 3 = down to 1.1.1
-  sectionDepth   Int             @default(3)
-  language       String          @default("English")
-  status         BookStatus      @default(DRAFT)
+  sectionDepth   Int               @default(3)
+  language       String            @default("English")
+  status         BookStatus        @default(DRAFT)
   coverUrl       String?
   userId         String
-  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   chapters       Chapter[]
   published      PublishedBook?
   follows        BookFollow[]
   authorGroups   AuthorGroup[]
-  posts          Post[]          @relation("postBook")
+  posts          Post[]            @relation("postBook")
   affiliateLinks AffiliateLink[]
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
+  chatMessages   BookChatMessage[]
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
 
   @@index([userId])
 }
@@ -137,6 +139,29 @@ enum ChapterKind {
   FRONT_MATTER
   CHAPTER
   BACK_MATTER
+}
+
+enum ChatRole {
+  USER
+  ASSISTANT
+}
+
+/// A conversation about one book, persisted so an author asking about chapter 7
+/// tomorrow still has yesterday's thread.
+model BookChatMessage {
+  id          String   @id @default(uuid())
+  bookId      String
+  book        Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role        ChatRole
+  content     String
+  /// What the author was asking about: "book", "chapter" or "selection".
+  contextKind String?
+  chapterId   String?
+  createdAt   DateTime @default(now())
+
+  @@index([bookId, createdAt])
 }
 
 // How deep a book numbers its sections. Fiction numbers nothing; technical and

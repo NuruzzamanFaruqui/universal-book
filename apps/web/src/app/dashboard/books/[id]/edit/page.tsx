@@ -1,16 +1,19 @@
 'use client';
 export const dynamic = 'force-dynamic';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   ArrowLeft, BookOpen, Sparkles, Map, Loader2, PanelRightClose, PanelRightOpen, AlertCircle, Upload,
   FileStack, Wand2, ScrollText, X, Plus, Trash2, ChevronUp, ChevronDown, FileText, PenLine,
+  Pin, PinOff, Maximize2, Minimize2, MessageSquare, Wrench,
 } from 'lucide-react';
 import ManuscriptEditor from '@/components/editor/ManuscriptEditor';
 import DraftWithAi from '@/components/editor/DraftWithAi';
 import WriteFromNotes from '@/components/editor/WriteFromNotes';
+import AssistantChat from '@/components/editor/AssistantChat';
+import { useEditorLayout, usePanelResize } from '@/lib/editor-layout';
 import { getToken as getFreshToken } from '@/lib/auth';
 import { API_URL } from '@/lib/config';
 import {
@@ -18,6 +21,16 @@ import {
   addChapter, renameChapter, deleteChapter, reorderChapters, fetchContents, ContentsEntry,
   ShapeReport, ReviewReport, BookMetadata,
 } from '@/lib/writing-ai';
+
+/**
+ * The rail, ordered by how often a writer reaches for each: the conversation
+ * first, then the tools that make text, then the ones that judge it.
+ */
+const TABS = [
+  { id: 'assistant', label: 'Assistant', icon: MessageSquare, hint: 'Ask about your book' },
+  { id: 'write',     label: 'Tools',     icon: Wrench,        hint: 'Draft, notes, import, shape' },
+  { id: 'review',    label: 'Review',    icon: ScrollText,    hint: 'Continuity, pacing, voice' },
+] as const;
 
 const wordsIn = (html: string | null | undefined) => {
   const plain = (html || '').replace(/<[^>]+>/g, ' ');
@@ -34,9 +47,16 @@ export default function EditChapterPage() {
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<any>(null);
   const [liveWords, setLiveWords] = useState(0);
-  const [panelOpen, setPanelOpen] = useState(true);
-
-  const [tab, setTab] = useState<'write' | 'review'>('write');
+  const {
+    outlineMode, setOutlineMode, outlineCollapsed, outlineOverlaid,
+    setPeeking, noteTyping,
+    panelWidth, setPanelWidth, panelOpen, setPanelOpen, tab, setTab,
+  } = useEditorLayout();
+  const { onPointerDown } = usePanelResize(panelWidth, setPanelWidth);
+  const [expanded, setExpanded] = useState(false);
+  const [vw, setVw] = useState(1440);
+  const [selectionText, setSelectionText] = useState('');
+  const insertRef = useRef<((text: string) => void) | null>(null);
   const [showDraft, setShowDraft] = useState(false);
   const [shape, setShape] = useState<ShapeReport | null>(null);
   const [shapeBusy, setShapeBusy] = useState(false);
@@ -62,6 +82,18 @@ export default function EditChapterPage() {
   const [contents, setContents] = useState<ContentsEntry[]>([]);
 
   useEffect(() => { fetchData(); /* eslint-disable-next-line */ }, [bookId]);
+
+  useEffect(() => {
+    const onResize = () => setVw(window.innerWidth);
+    onResize();
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  /** Drops a reply from the assistant into the manuscript at the caret. */
+  const insertIntoManuscript = useCallback((text: string) => {
+    insertRef.current?.(text);
+  }, []);
 
   const fetchData = async () => {
     try {
@@ -330,12 +362,41 @@ export default function EditChapterPage() {
         </button>
       </header>
 
-      <div className="flex flex-1 min-h-0">
+      <div className="flex flex-1 min-h-0 relative">
 
-        {/* outline */}
-        <aside className="hidden lg:flex w-56 flex-col bg-slate-800 border-r border-slate-700 shrink-0">
-          <div className="px-4 pt-3 pb-2 text-[10px] uppercase tracking-widest text-slate-500 font-mono">
-            Manuscript
+        {/* A hair-trigger strip on the left edge: brushing it brings the outline
+            back without having to aim at anything. */}
+        {outlineCollapsed && (
+          <div
+            className="hidden lg:block absolute left-0 top-0 bottom-0 w-4 z-30"
+            onMouseEnter={() => setPeeking(true)}
+            aria-hidden
+          />
+        )}
+
+        {/* Pinned, it pushes the page. Peeking, it floats over — so the text
+            never reflows under the caret mid-sentence. */}
+        <aside
+          onMouseEnter={() => outlineMode === 'auto' && setPeeking(true)}
+          onMouseLeave={() => outlineMode === 'auto' && setPeeking(false)}
+          className={`hidden lg:flex w-60 flex-col bg-slate-800 border-r border-slate-700 shrink-0
+                      transition-transform duration-200 ease-out
+                      ${outlineOverlaid ? 'absolute left-0 top-0 bottom-0 z-40 shadow-2xl shadow-black/60' : ''}
+                      ${outlineCollapsed ? 'absolute left-0 top-0 bottom-0 z-40 -translate-x-full' : ''}`}
+        >
+          <div className="px-4 pt-3 pb-2 flex items-center gap-1.5">
+            <span className="text-[10px] uppercase tracking-widest text-slate-500 font-mono">Manuscript</span>
+            <button
+              onClick={() => setOutlineMode(outlineMode === 'auto' ? 'pinned' : 'auto')}
+              title={outlineMode === 'auto'
+                ? 'Hides itself while you write. Click to keep it open.'
+                : 'Always open. Click to let it hide while you write.'}
+              className={`ml-auto p-1 rounded-md transition ${
+                outlineMode === 'pinned' ? 'text-indigo-400 bg-indigo-500/15'
+                                         : 'text-slate-600 hover:text-slate-300'}`}
+            >
+              {outlineMode === 'pinned' ? <Pin size={12} /> : <PinOff size={12} />}
+            </button>
           </div>
           <div className="flex-1 overflow-y-auto px-2 pb-3">
             {(['front', 'chapters', 'back'] as const).map(section => {
@@ -546,6 +607,9 @@ export default function EditChapterPage() {
                 sectionDepth={selectedChapter.kind === 'CHAPTER' ? (book.sectionDepth ?? 3) : 0}
                 onSave={handleSave}
                 onStats={s => setLiveWords(s.words)}
+                onTyping={noteTyping}
+                onSelectionChange={setSelectionText}
+                onReady={api => { insertRef.current = api.insert; }}
                 bodyPlaceholder={
                   selectedChapter.slug === 'title-page'
                     ? 'Publisher or edition line — optional'
@@ -636,29 +700,148 @@ export default function EditChapterPage() {
           )}
         </main>
 
-        {/* assistant */}
+        {/* assistant workspace */}
         {panelOpen && (
-          <aside className="hidden xl:flex w-80 flex-col bg-slate-800 border-l border-slate-700 shrink-0">
-            <div className="px-4 pt-3 pb-1.5 text-[10px] uppercase tracking-widest text-slate-500 font-mono flex items-center gap-1.5">
-              <Sparkles size={11} className="text-indigo-400" /> Assistant
-              {openFlags.length > 0 && (
-                <span className="ml-auto text-[9px] px-1.5 py-px rounded-full bg-amber-500/15
-                                 text-amber-400 border border-amber-500/30 normal-case tracking-normal">
-                  {openFlags.length} to look at
+          <div
+            className="hidden xl:flex shrink-0 relative"
+            style={{ width: expanded ? Math.max(panelWidth, Math.round(vw * 0.5)) : panelWidth }}
+          >
+            <div
+              onPointerDown={onPointerDown}
+              onDoubleClick={() => setPanelWidth(420)}
+              title="Drag to resize · double-click to reset"
+              className="absolute left-0 top-0 bottom-0 w-1.5 -ml-0.5 z-20 cursor-col-resize
+                         hover:bg-indigo-500/40 transition-colors"
+            />
+
+            <div className="flex-1 min-w-0 flex flex-col bg-slate-800 border-l border-slate-700">
+              <div className="px-4 pt-3 pb-2 flex items-center gap-2 shrink-0">
+                <span className="text-[10px] uppercase tracking-widest text-slate-500 font-mono flex items-center gap-1.5">
+                  <Sparkles size={11} className="text-indigo-400" />
+                  {TABS.find(t => t.id === tab)?.label ?? 'Assistant'}
                 </span>
+                {tab === 'review' && openFlags.length > 0 && (
+                  <span className="text-[9px] px-1.5 py-px rounded-full bg-amber-500/15
+                                   text-amber-400 border border-amber-500/30">
+                    {openFlags.length} to look at
+                  </span>
+                )}
+                <button
+                  onClick={() => setExpanded(e => !e)}
+                  title={expanded ? 'Shrink the panel' : 'Give the assistant half the screen'}
+                  className="ml-auto p-1 text-slate-600 hover:text-slate-300 transition"
+                >
+                  {expanded ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+                </button>
+              </div>
+
+              {tab === 'assistant' ? (
+                <AssistantChat
+                  bookId={bookId}
+                  chapterId={selectedChapter?.id}
+                  chapterLabel={selectedChapter?.kind === 'CHAPTER'
+                    ? `Chapter ${selectedChapter.number}` : selectedChapter?.title}
+                  selection={selectionText}
+                  onInsert={insertIntoManuscript}
+                />
+              ) : tab === 'review' ? (
+                <div className="flex-1 overflow-y-auto px-3 pb-4 space-y-2 min-h-0">
+              <button onClick={runReview} disabled={reviewBusy || !hasWriting}
+                className="flex items-center gap-2.5 w-full px-3 py-2.5 text-[13px] text-slate-300 bg-slate-900/60
+                           border border-slate-700/60 rounded-xl hover:border-indigo-500 hover:text-indigo-300
+                           transition disabled:opacity-50 text-left">
+                {reviewBusy ? <Loader2 size={15} className="animate-spin" /> : <ScrollText size={15} />}
+                {reviewBusy ? 'Reading the manuscript…' : review ? 'Review again' : 'Review my manuscript'}
+              </button>
+
+              {!hasWriting && (
+                <p className="text-[12px] text-slate-500 px-1 leading-relaxed">
+                  Write a chapter and I&apos;ll check it for promises you didn&apos;t keep, terms that drift,
+                  and places the voice changes.
+                </p>
               )}
-            </div>
 
-            <div className="flex gap-1 px-3 pb-2">
-              {(['write', 'review'] as const).map(t => (
-                <button key={t} onClick={() => setTab(t)}
-                  className={`px-3 py-1.5 rounded-lg text-[12.5px] font-semibold capitalize transition ${
-                    tab === t ? 'bg-indigo-500/15 text-indigo-300' : 'text-slate-500 hover:text-slate-300'
-                  }`}>{t}</button>
-              ))}
-            </div>
+              {reviewError && (
+                <div className="flex gap-2 px-3 py-2.5 bg-red-500/10 border border-red-500/30 rounded-xl text-[12px] text-red-300">
+                  <AlertCircle size={14} className="shrink-0 mt-0.5" />{reviewError}
+                </div>
+              )}
 
-            <div className={`flex-1 overflow-y-auto px-3 pb-4 space-y-2 ${tab === 'write' ? '' : 'hidden'}`}>
+              {review && (
+                <>
+                  {openFlags.length === 0 ? (
+                    <div className="bg-slate-900/60 border border-slate-700/60 rounded-xl p-3.5">
+                      <p className="text-[12.5px] text-emerald-300 leading-relaxed">
+                        Nothing inconsistent found. Promises are kept and terminology holds.
+                      </p>
+                    </div>
+                  ) : openFlags.map((f, i) => (
+                    <div key={i}
+                      className={`flex gap-2 items-start px-3 py-2.5 rounded-xl text-[12.5px] leading-relaxed border-l-2 ${
+                        f.severity === 'high'
+                          ? 'bg-amber-500/10 border-l-amber-500 text-amber-100/90'
+                          : 'bg-slate-900/60 border-l-slate-600 text-slate-300'
+                      }`}>
+                      <AlertCircle size={13} className="shrink-0 mt-0.5 opacity-70" />
+                      <span className="flex-1">
+                        {f.chapter ? <strong className="font-semibold">Ch.{f.chapter} · </strong> : null}
+                        {f.issue}
+                      </span>
+                      <button onClick={() => setDismissed(d => new Set(d).add(f.issue))}
+                        title="Dismiss" className="shrink-0 opacity-50 hover:opacity-100 transition">
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ))}
+
+                  <div className="bg-slate-900/60 border border-slate-700/60 rounded-xl p-3.5">
+                    <h4 className="text-[11px] uppercase tracking-wider text-slate-500 font-mono mb-1.5">Pacing</h4>
+                    <p className="text-[12.5px] text-slate-300 leading-relaxed">
+                      {review.pacing.chapters} chapters, averaging{' '}
+                      <strong className="tabular-nums">{review.pacing.averageWords.toLocaleString()}</strong> words.
+                    </p>
+                    {review.pacing.outliers.length > 0 && (
+                      <ul className="mt-2 space-y-1">
+                        {review.pacing.outliers.map(o => (
+                          <li key={o.number} className="text-[12px] text-amber-200/80 flex gap-2">
+                            <span className="text-amber-500">·</span>
+                            Ch.{o.number} is {o.words.toLocaleString()} words — well off the average.
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+
+                  {review.voice && (
+                    <div className="bg-slate-900/60 border border-slate-700/60 rounded-xl p-3.5">
+                      <h4 className="text-[11px] uppercase tracking-wider text-slate-500 font-mono mb-1.5">Voice</h4>
+                      <p className="text-[12.5px] text-slate-300 leading-relaxed">{review.voice}</p>
+                    </div>
+                  )}
+
+                  {review.whereYouLeftOff && (
+                    <div className="bg-slate-900/60 border border-slate-700/60 rounded-xl p-3.5">
+                      <h4 className="text-[11px] uppercase tracking-wider text-slate-500 font-mono mb-1.5">
+                        Where you left off
+                      </h4>
+                      <p className="text-[12.5px] text-slate-300 leading-relaxed">
+                        {review.whereYouLeftOff.note}
+                      </p>
+                      <button
+                        onClick={() => {
+                          const target = grouped.chapters.find((c: any) => c.number === review.whereYouLeftOff!.chapter);
+                          if (target) setSelectedChapter(target);
+                        }}
+                        className="mt-2 text-[12px] text-indigo-300 hover:text-indigo-200 transition">
+                        Go to chapter {review.whereYouLeftOff.chapter} →
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+                </div>
+              ) : (
+                <div className="flex-1 overflow-y-auto px-3 pb-4 space-y-2 min-h-0">
               <div className="bg-slate-900/60 border border-slate-700/60 rounded-xl p-3">
                 <p className="text-[12px] text-slate-400 leading-relaxed">
                   Select any passage for <strong className="text-slate-200">Tighten</strong>,{' '}
@@ -758,111 +941,37 @@ export default function EditChapterPage() {
                   )}
                 </div>
               )}
-            </div>
-
-            {/* review */}
-            <div className={`flex-1 overflow-y-auto px-3 pb-4 space-y-2 ${tab === 'review' ? '' : 'hidden'}`}>
-              <button onClick={runReview} disabled={reviewBusy || !hasWriting}
-                className="flex items-center gap-2.5 w-full px-3 py-2.5 text-[13px] text-slate-300 bg-slate-900/60
-                           border border-slate-700/60 rounded-xl hover:border-indigo-500 hover:text-indigo-300
-                           transition disabled:opacity-50 text-left">
-                {reviewBusy ? <Loader2 size={15} className="animate-spin" /> : <ScrollText size={15} />}
-                {reviewBusy ? 'Reading the manuscript…' : review ? 'Review again' : 'Review my manuscript'}
-              </button>
-
-              {!hasWriting && (
-                <p className="text-[12px] text-slate-500 px-1 leading-relaxed">
-                  Write a chapter and I&apos;ll check it for promises you didn&apos;t keep, terms that drift,
-                  and places the voice changes.
-                </p>
-              )}
-
-              {reviewError && (
-                <div className="flex gap-2 px-3 py-2.5 bg-red-500/10 border border-red-500/30 rounded-xl text-[12px] text-red-300">
-                  <AlertCircle size={14} className="shrink-0 mt-0.5" />{reviewError}
                 </div>
               )}
 
-              {review && (
-                <>
-                  {openFlags.length === 0 ? (
-                    <div className="bg-slate-900/60 border border-slate-700/60 rounded-xl p-3.5">
-                      <p className="text-[12.5px] text-emerald-300 leading-relaxed">
-                        Nothing inconsistent found. Promises are kept and terminology holds.
-                      </p>
-                    </div>
-                  ) : openFlags.map((f, i) => (
-                    <div key={i}
-                      className={`flex gap-2 items-start px-3 py-2.5 rounded-xl text-[12.5px] leading-relaxed border-l-2 ${
-                        f.severity === 'high'
-                          ? 'bg-amber-500/10 border-l-amber-500 text-amber-100/90'
-                          : 'bg-slate-900/60 border-l-slate-600 text-slate-300'
-                      }`}>
-                      <AlertCircle size={13} className="shrink-0 mt-0.5 opacity-70" />
-                      <span className="flex-1">
-                        {f.chapter ? <strong className="font-semibold">Ch.{f.chapter} · </strong> : null}
-                        {f.issue}
-                      </span>
-                      <button onClick={() => setDismissed(d => new Set(d).add(f.issue))}
-                        title="Dismiss" className="shrink-0 opacity-50 hover:opacity-100 transition">
-                        <X size={12} />
-                      </button>
-                    </div>
-                  ))}
-
-                  <div className="bg-slate-900/60 border border-slate-700/60 rounded-xl p-3.5">
-                    <h4 className="text-[11px] uppercase tracking-wider text-slate-500 font-mono mb-1.5">Pacing</h4>
-                    <p className="text-[12.5px] text-slate-300 leading-relaxed">
-                      {review.pacing.chapters} chapters, averaging{' '}
-                      <strong className="tabular-nums">{review.pacing.averageWords.toLocaleString()}</strong> words.
-                    </p>
-                    {review.pacing.outliers.length > 0 && (
-                      <ul className="mt-2 space-y-1">
-                        {review.pacing.outliers.map(o => (
-                          <li key={o.number} className="text-[12px] text-amber-200/80 flex gap-2">
-                            <span className="text-amber-500">·</span>
-                            Ch.{o.number} is {o.words.toLocaleString()} words — well off the average.
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-
-                  {review.voice && (
-                    <div className="bg-slate-900/60 border border-slate-700/60 rounded-xl p-3.5">
-                      <h4 className="text-[11px] uppercase tracking-wider text-slate-500 font-mono mb-1.5">Voice</h4>
-                      <p className="text-[12.5px] text-slate-300 leading-relaxed">{review.voice}</p>
-                    </div>
-                  )}
-
-                  {review.whereYouLeftOff && (
-                    <div className="bg-slate-900/60 border border-slate-700/60 rounded-xl p-3.5">
-                      <h4 className="text-[11px] uppercase tracking-wider text-slate-500 font-mono mb-1.5">
-                        Where you left off
-                      </h4>
-                      <p className="text-[12.5px] text-slate-300 leading-relaxed">
-                        {review.whereYouLeftOff.note}
-                      </p>
-                      <button
-                        onClick={() => {
-                          const target = grouped.chapters.find((c: any) => c.number === review.whereYouLeftOff!.chapter);
-                          if (target) setSelectedChapter(target);
-                        }}
-                        className="mt-2 text-[12px] text-indigo-300 hover:text-indigo-200 transition">
-                        Go to chapter {review.whereYouLeftOff.chapter} →
-                      </button>
-                    </div>
-                  )}
-                </>
-              )}
+              <div className="border-t border-slate-700/60 px-4 py-2.5 shrink-0">
+                <p className="text-[10px] text-slate-500 leading-relaxed">
+                  Writing assistance is included with this book. Images and video cost credits.
+                </p>
+              </div>
             </div>
 
-            <div className="border-t border-slate-700/60 px-4 py-3">
-              <p className="text-[10px] text-slate-500 leading-relaxed">
-                Writing assistance is included with this book. Images and video cost credits.
-              </p>
-            </div>
-          </aside>
+            {/* A rail rather than a row of tabs — this scales past six, a row does not. */}
+            <nav className="w-12 shrink-0 bg-slate-900 border-l border-slate-700 flex flex-col items-center py-3 gap-1">
+              {TABS.map(t => {
+                const Icon = t.icon;
+                const on = tab === t.id;
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => setTab(t.id)}
+                    title={`${t.label} — ${t.hint}`}
+                    aria-label={t.label}
+                    className={`w-9 h-9 rounded-lg flex items-center justify-center transition ${
+                      on ? 'bg-indigo-500/20 text-indigo-300'
+                         : 'text-slate-500 hover:text-slate-200 hover:bg-slate-800'}`}
+                  >
+                    <Icon size={17} />
+                  </button>
+                );
+              })}
+            </nav>
+          </div>
         )}
       </div>
     </div>

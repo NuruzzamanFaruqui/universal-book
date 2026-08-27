@@ -30,6 +30,12 @@ interface Props {
   bodyPlaceholder?: string;
   onSave?: (html: string) => Promise<void> | void;
   onStats?: (stats: { words: number; chars: number }) => void;
+  /** Fires on the first keystroke, so the outline can get out of the way. */
+  onTyping?: () => void;
+  /** Reports the highlighted text, so the assistant can be asked about it. */
+  onSelectionChange?: (text: string) => void;
+  /** Hands back a function that inserts text at the caret. */
+  onReady?: (api: { insert: (text: string) => void }) => void;
   readOnly?: boolean;
   userId?: string;
 }
@@ -42,7 +48,7 @@ interface Anchor { top: number; left: number; bottom: number }
 export default function ManuscriptEditor({
   bookId, chapterId, initialContent = '', bookTitle, tone, voiceSample,
   chapterNumber = 1, sectionDepth = 3, pageHeader, bodyPlaceholder,
-  onSave, onStats, readOnly = false, userId = '',
+  onSave, onStats, onTyping, onSelectionChange, onReady, readOnly = false, userId = '',
 }: Props) {
   const [saving, setSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
@@ -68,6 +74,9 @@ export default function ManuscriptEditor({
   const dictation = useRef<DictationHandle | null>(null);
   const canDictate = useRef(false);
   useEffect(() => { canDictate.current = dictationSupported(); }, []);
+
+  const onTypingRef = useRef(onTyping);
+  useEffect(() => { onTypingRef.current = onTyping; }, [onTyping]);
 
   const isRemote = useRef(false);
   /** Set immediately after an AI replacement, so one undo restores the original. */
@@ -95,11 +104,29 @@ export default function ManuscriptEditor({
     onUpdate: ({ editor }) => {
       if (isRemote.current) return;
       undoable.current = false;
+      onTypingRef.current?.();
       scheduleSave(editor);
       report(editor);
     },
     onSelectionUpdate: ({ editor }) => positionBubble(editor),
   });
+
+  // Expose an insert so the assistant's replies can land in the manuscript.
+  useEffect(() => {
+    if (!editor || !onReady) return;
+    onReady({
+      insert: (text: string) => {
+        const html = text
+          .split(/\n{2,}/)
+          .map(par => `<p>${par.replace(/\n/g, ' ').trim()}</p>`)
+          .join('');
+        editor.chain().focus().insertContent(html).run();
+        scheduleSave(editor);
+        report(editor);
+      },
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editor]);
 
   const report = useCallback((ed: Editor) => {
     const text = ed.getText();
@@ -198,9 +225,14 @@ export default function ManuscriptEditor({
 
   const positionBubble = useCallback((ed: Editor) => {
     const { from, to } = ed.state.selection;
-    if (from === to || readOnly) { setSelAnchor(null); return; }
+    if (from === to || readOnly) {
+      setSelAnchor(null);
+      onSelectionChange?.('');
+      return;
+    }
+    onSelectionChange?.(ed.state.doc.textBetween(from, to, ' '));
     setSelAnchor(anchorFromSelection());
-  }, [readOnly]);
+  }, [readOnly, onSelectionChange]);
 
   useEffect(() => {
     const close = () => { setSelAnchor(null); setSlashAnchor(null); };
