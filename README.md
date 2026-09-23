@@ -3,6 +3,20 @@
 > **AI-Powered Social Publishing Marketplace**  
 > Supervised by Dr. Levin Kuhlmann (Monash University) · March 2026
 
+## 💻 Run it on your own computer
+
+New to the project? **[RUN-LOCALLY.md](RUN-LOCALLY.md)** walks through it from
+nothing installed to a working site, assuming no prior experience.
+
+The short version, once Node.js 20, Docker Desktop and VS Code are installed:
+
+```bash
+npm run setup   # once — database, packages, demo accounts
+npm run dev     # every time — http://localhost:3000
+```
+
+Sign in as `author@local.test` / `Password123!`.
+
 ## 🌐 Live URLs
 
 | Service | URL |

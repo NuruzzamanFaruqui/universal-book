@@ -1,10 +1,16 @@
 /**
  * Single source of truth for the API origin.
  *
- * A literal rather than a process.env read: Next.js substitutes NEXT_PUBLIC_*
- * at build time, and the value has to survive into the static bundle.
+ * Next.js substitutes NEXT_PUBLIC_* at build time, so the chosen value is baked
+ * into the static bundle — which is the property this needs. Locally,
+ * apps/web/.env.local sets it to http://localhost:8080.
+ *
+ * The fallback is the production origin, so a Cloud Run build that does not
+ * pass NEXT_PUBLIC_API_URL behaves exactly as it always has. Never set this
+ * variable to a localhost value in a deploy environment.
  */
-export const API_URL = 'https://api.universal-book.com';
+export const API_URL =
+  process.env.NEXT_PUBLIC_API_URL || 'https://api.universal-book.com';
 
 /** Client polling cadences, in milliseconds. */
 export const POLL = {

@@ -1,3 +1,10 @@
 node_modules
 .next
 *.md
+
+# Local settings must never reach a build image. NEXT_PUBLIC_* comes from the
+# Dockerfile's build args at deploy time.
+.env
+.env.*
+!.env.example
+!.env.local.example

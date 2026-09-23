@@ -1,0 +1,16 @@
+{
+  "name": "universal-book",
+  "private": true,
+  "description": "Universal Book — run everything locally with two commands.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "setup": "node scripts/setup.mjs",
+    "dev": "node scripts/dev.mjs",
+    "db:start": "docker compose up -d --wait",
+    "db:stop": "docker compose stop",
+    "db:studio": "npm --prefix apps/api exec prisma studio",
+    "db:reset": "node scripts/reset.mjs"
+  }
+}

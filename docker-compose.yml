@@ -1,0 +1,27 @@
+# The local database. Nothing else runs in Docker — the API and the website run
+# straight from your machine so that saving a file reloads them instantly.
+#
+# Host port is 5433, not 5432, so this never collides with a PostgreSQL someone
+# already has installed.
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: universal-book-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: universalbook
+      POSTGRES_PASSWORD: localdev
+      POSTGRES_DB: universalbook
+    ports:
+      - "5433:5432"
+    volumes:
+      - universal-book-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U universalbook -d universalbook"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  universal-book-db-data:

@@ -1,4 +1,8 @@
 node_modules
 dist
-.env
 *.md
+
+# Local settings must never reach a build image. Cloud Run supplies these.
+.env
+.env.*
+!.env.example

@@ -1,0 +1,12 @@
+{
+  "editor.formatOnSave": false,
+  "files.eol": "\n",
+  "typescript.tsdk": "apps/web/node_modules/typescript/lib",
+  "typescript.enablePromptUseWorkspaceTsdk": true,
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/.next": true,
+    "**/dist": true
+  },
+  "[prisma]": { "editor.defaultFormatter": "Prisma.prisma" }
+}

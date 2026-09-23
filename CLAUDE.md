@@ -80,6 +80,19 @@ values override environment variables; blank falls back to env.
 
 ---
 
+### Local
+
+`npm run setup` then `npm run dev` from the repo root — see `RUN-LOCALLY.md`.
+PostgreSQL 16 in Docker on host port **5433**, API on 8080, web on 3000.
+Seeded accounts: `author@local.test` and `faruqui.swe@diu.edu.bd`, both
+`Password123!`, 500 credits each; `prisma/seed.js` refuses to run against any
+DATABASE_URL that is not localhost.
+
+`scripts/setup.mjs` aborts if `apps/api/.env` or `apps/web/.env.local` point at
+deployed infrastructure, so a local run can never write to Cloud SQL. **On this
+Cloud Shell box those files hold the deploy values**; the local pair is parked
+at `.env.localdev` / `.env.local.localdev`. Swap to run locally here.
+
 ## 4. Auth and realtime
 
 **Auth is a JWT issuer in the API.** 15-minute access tokens, 30-day rotating
@@ -140,6 +153,8 @@ Stripe is on sandbox keys. Webhook: `/api/payments/webhook`.
    `lib/realtime.ts`.
 3. **The API origin lives in `lib/config.ts`** — one constant, inlined at build
    time. Do not re-hardcode it per page; it was previously duplicated in 35 files.
+   It reads `NEXT_PUBLIC_API_URL` and falls back to the production origin, so an
+   unset deploy behaves exactly as before while local runs point at :8080.
 4. **Use `getToken()`**, never read `ub_token` directly — it may be expired.
 5. **`NEXT_PUBLIC_*` must be set at deploy time** via `--set-env-vars`.
 6. **`npm run build` before deploying; `npx prisma generate` after schema changes.**
