@@ -1,0 +1,15 @@
+# Normalise line endings. Without this, a Windows clone rewrites every file to
+# CRLF, which shows up as a repo-wide diff the moment anyone saves a file.
+# Everything here is JavaScript or TypeScript read by Node, which is happy with
+# LF on every platform, so LF everywhere is the simplest correct answer.
+* text=auto eol=lf
+
+# Binaries must never be line-ending converted.
+*.docx binary
+*.pdf  binary
+*.zip  binary
+*.png  binary
+*.jpg  binary
+*.ico  binary
+*.woff binary
+*.woff2 binary

@@ -12,3 +12,6 @@ build/
 *.log
 .DS_Store
 *.tsbuildinfo
+
+# Download bundles built from files already in the repo.
+*.zip

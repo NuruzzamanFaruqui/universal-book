@@ -41,7 +41,12 @@ Open Visual Studio Code. Then:
    https://github.com/NuruzzamanFaruqui/universal-book.git
    ```
 
-4. Choose a folder to put it in — your Desktop is fine.
+4. Choose a folder to put it in. **Avoid Desktop, Documents and anything
+   inside OneDrive or iCloud Drive.** Those are synced to the cloud, which
+   fights with the thousands of small files this project creates. Good picks:
+
+   - **Windows** — make a new folder called `C:\dev` and choose that
+   - **Mac** — your home folder, the one with your name on it
 5. When it asks *"Would you like to open the cloned repository?"*, click
    **Open**.
 
@@ -147,6 +152,7 @@ straight away. Just refresh your browser.
 | `npm: command not found` | Node.js is not installed, or VS Code was open while you installed it. Close VS Code completely, open it again. |
 | `This project has not been set up yet` | Run `npm run setup` first. |
 | `port 3000 is already in use` | Something else is using it. Close other terminals, or restart your computer. |
+| On Windows: `EPERM` or `file is being used by another process` | The project is in a OneDrive folder. Move it to `C:\dev` and run `npm run setup` there. |
 | The page loads but says *AI is unavailable* | Expected. AI features need a paid Anthropic key — see **Optional extras** below. |
 | Anything else | Press **Ctrl+C**, then run `npm run dev` again. If it still fails, run `npm run db:reset` and then `npm run dev`. |
 
