@@ -1,13 +1,17 @@
 'use client';
 export const dynamic = 'force-dynamic';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { BookOpen, Star, ArrowLeft, Heart, Share2, CheckCircle, Wallet, CreditCard, ChevronDown, ChevronUp } from 'lucide-react';
 import MarketingNav from '@/components/MarketingNav';
 import { getToken as getFreshToken } from '@/lib/auth';
 import { API_URL } from '@/lib/config';
+import { ReadingProgressApi, type BookProgress } from '@/lib/reading-progress';
+import ReadingProgressBar from '@/components/reading/ReadingProgressBar';
+import MarkAsReadButton from '@/components/reading/MarkAsReadButton';
+import ChapterEndSentinel from '@/components/reading/ChapterEndSentinel';
 
 
 
@@ -33,6 +37,12 @@ export default function PublicBookPage() {
   const [generatingLink, setGeneratingLink] = useState(false);
   const [affiliateCode, setAffiliateCode] = useState('');
   const [expandedChapter, setExpandedChapter] = useState<string | null>(null);
+  // Null until loaded, and stays null for readers without full access.
+  const [progress, setProgress] = useState<BookProgress | null>(null);
+  const progressRequest = useRef(0);
+  // Chapters the reader marked unread during this visit. Auto-marking stays
+  // off for them until the page is reloaded, so it can't undo their choice.
+  const [noAutoMark, setNoAutoMark] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     // Capture affiliate code from URL
@@ -79,6 +89,48 @@ export default function PublicBookPage() {
   useEffect(() => {
     if (authChecked) fetchBook();
   }, [authChecked]);
+
+  // Progress is only tracked for readers who can open every chapter. Re-runs
+  // after a purchase, when the refetched book comes back with hasAccess.
+  const hasAccess = !!book?.hasAccess;
+  useEffect(() => {
+    if (!isLoggedIn || !hasAccess) { setProgress(null); return; }
+    ReadingProgressApi.getBookProgress(bookId)
+      .then(setProgress)
+      .catch(() => setProgress(null));
+  }, [isLoggedIn, hasAccess, bookId]);
+
+  const readChapterIds = new Set(progress?.readChapterIds ?? []);
+
+  const handleSetChapterRead = async (chapterId: string, isRead: boolean) => {
+    if (!progress || readChapterIds.has(chapterId) === isRead) return;
+    const previous = progress;
+    // Update the bar straight away; the server's answer replaces it.
+    setProgress({
+      ...progress,
+      readCount: progress.readCount + (isRead ? 1 : -1),
+      readChapterIds: isRead
+        ? [...progress.readChapterIds, chapterId]
+        : progress.readChapterIds.filter((id) => id !== chapterId),
+    });
+    const requestId = ++progressRequest.current;
+    try {
+      const updated = await ReadingProgressApi.setChapterRead(bookId, chapterId, isRead);
+      // Ignore a slow response if the reader has clicked again since.
+      if (requestId === progressRequest.current) setProgress(updated);
+    } catch {
+      if (requestId === progressRequest.current) setProgress(previous);
+    }
+  };
+
+  // The button: a manual "unread" also switches auto-marking off for that chapter.
+  const handleToggleChapterRead = (chapterId: string, isRead: boolean) => {
+    if (!isRead) setNoAutoMark((prev) => new Set(prev).add(chapterId));
+    handleSetChapterRead(chapterId, isRead);
+  };
+
+  const canAutoMark = (chapterId: string) =>
+    !!progress && !readChapterIds.has(chapterId) && !noAutoMark.has(chapterId);
 
   const fetchBook = async () => {
     try {
@@ -255,6 +307,11 @@ export default function PublicBookPage() {
               </div>
             )}
 
+            {/* Reading progress — only for readers with full access */}
+            {progress && (
+              <ReadingProgressBar readCount={progress.readCount} totalChapters={progress.totalChapters} />
+            )}
+
             {/* First Chapter - Free Preview */}
             {firstChapter && (
               <div>
@@ -266,7 +323,10 @@ export default function PublicBookPage() {
                     onClick={() => setExpandedChapter(expandedChapter === firstChapter.id ? null : firstChapter.id)}
                     className="w-full flex items-center justify-between p-4 hover:bg-slate-700/30 transition"
                   >
-                    <span className="text-blue-400 font-medium">{firstChapter.title}</span>
+                    <span className="text-blue-400 font-medium flex items-center gap-2">
+                      {firstChapter.title}
+                      {readChapterIds.has(firstChapter.id) && <CheckCircle size={16} className="text-green-400" aria-label="Read" />}
+                    </span>
                     {expandedChapter === firstChapter.id ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
                   </button>
                   {expandedChapter === firstChapter.id && firstChapter.content && (
@@ -277,7 +337,18 @@ export default function PublicBookPage() {
                         .book-reader strong { color: #f1f5f9; }
                         .book-reader blockquote { border-left: 3px solid #3b82f6; padding-left: 1rem; color: #94a3b8; font-style: italic; margin: 1rem 0; }
                       `}</style>
+                      {progress && (
+                        <MarkAsReadButton
+                          chapterId={firstChapter.id}
+                          isRead={readChapterIds.has(firstChapter.id)}
+                          onToggle={handleToggleChapterRead}
+                        />
+                      )}
                       <div className="book-reader" dangerouslySetInnerHTML={{ __html: firstChapter.content }} />
+                      <ChapterEndSentinel
+                        enabled={canAutoMark(firstChapter.id)}
+                        onReachEnd={() => handleSetChapterRead(firstChapter.id, true)}
+                      />
                     </div>
                   )}
                 </div>
@@ -302,7 +373,10 @@ export default function PublicBookPage() {
                             onClick={() => setExpandedChapter(expandedChapter === ch.id ? null : ch.id)}
                             className="w-full flex items-center justify-between p-4 hover:bg-slate-700/30 transition"
                           >
-                            <span className="text-blue-400 font-medium">Chapter {ch.number}: {ch.title}</span>
+                            <span className="text-blue-400 font-medium flex items-center gap-2">
+                              Chapter {ch.number}: {ch.title}
+                              {readChapterIds.has(ch.id) && <CheckCircle size={16} className="text-green-400" aria-label="Read" />}
+                            </span>
                             {expandedChapter === ch.id ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
                           </button>
                           {expandedChapter === ch.id && (
@@ -313,7 +387,18 @@ export default function PublicBookPage() {
                                 .book-reader strong { color: #f1f5f9; }
                                 .book-reader blockquote { border-left: 3px solid #3b82f6; padding-left: 1rem; color: #94a3b8; font-style: italic; margin: 1rem 0; }
                               `}</style>
+                              {progress && (
+                                <MarkAsReadButton
+                                  chapterId={ch.id}
+                                  isRead={readChapterIds.has(ch.id)}
+                                  onToggle={handleToggleChapterRead}
+                                />
+                              )}
                               <div className="book-reader" dangerouslySetInnerHTML={{ __html: ch.content }} />
+                              <ChapterEndSentinel
+                                enabled={canAutoMark(ch.id)}
+                                onReachEnd={() => handleSetChapterRead(ch.id, true)}
+                              />
                             </div>
                           )}
                         </div>

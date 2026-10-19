@@ -15,6 +15,7 @@ import { MarketplaceModule } from './marketplace/marketplace.module';
 import { GroupsModule } from './groups/groups.module';
 import { AuthorGroupsModule } from './author-groups/author-groups.module';
 import { SocialModule } from './social/social.module';
+import { ReadingProgressModule } from './reading-progress/reading-progress.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { SocialModule } from './social/social.module';
     GroupsModule,
     AuthorGroupsModule,
     SocialModule,
+    ReadingProgressModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

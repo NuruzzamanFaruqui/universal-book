@@ -62,6 +62,7 @@ model User {
   passwordResets         PasswordResetToken[]
   editorPresence         EditorPresence[]
   bookChatMessages       BookChatMessage[]
+  chapterReadProgress    ChapterReadProgress[]
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
@@ -128,6 +129,7 @@ model Book {
   posts          Post[]            @relation("postBook")
   affiliateLinks AffiliateLink[]
   chatMessages   BookChatMessage[]
+  readProgress   ChapterReadProgress[]
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
 
@@ -188,6 +190,7 @@ model Chapter {
   // its own edit.
   updatedById String?
   presence    EditorPresence[]
+  readProgress ChapterReadProgress[]
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
 
@@ -547,4 +550,25 @@ model Connection {
   updatedAt  DateTime @updatedAt
 
   @@unique([senderId, receiverId])
+}
+
+/// One row per reader per chapter. Reading progress for a book is the count of
+/// rows with isRead = true against the book's CHAPTER-kind chapters.
+model ChapterReadProgress {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chapterId String
+  chapter   Chapter   @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  // Stored alongside chapterId so a book's progress is a single indexed query.
+  bookId    String
+  book      Book      @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  isRead    Boolean   @default(false)
+  // When the chapter was last marked read. Kept when it is marked unread.
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([userId, chapterId])
+  @@index([userId, bookId])
 }

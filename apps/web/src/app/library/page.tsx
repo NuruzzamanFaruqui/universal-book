@@ -8,6 +8,8 @@ import { BookOpen, ShoppingBag, Clock } from 'lucide-react';
 import AppNav from '@/components/AppNav';
 import { getToken as getFreshToken } from '@/lib/auth';
 import { API_URL } from '@/lib/config';
+import { ReadingProgressApi, type LibraryProgress } from '@/lib/reading-progress';
+import ReadingProgressBar from '@/components/reading/ReadingProgressBar';
 
 
 
@@ -15,6 +17,7 @@ export default function LibraryPage() {
   const router = useRouter();
   const [purchases, setPurchases] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [progressByBook, setProgressByBook] = useState<Record<string, LibraryProgress>>({});
 
   useEffect(() => {
     const token = localStorage.getItem('ub_token');
@@ -23,6 +26,10 @@ export default function LibraryPage() {
   }, []);
 
   const fetchPurchases = async () => {
+    // Separate request, so a progress failure never hides the library itself.
+    ReadingProgressApi.getLibraryProgress()
+      .then((rows) => setProgressByBook(Object.fromEntries(rows.map((r) => [r.bookId, r]))))
+      .catch(() => {});
     try {
       const token = await getFreshToken();
       const res = await fetch(`${API_URL}/api/marketplace/library`, {
@@ -69,6 +76,15 @@ export default function LibraryPage() {
                 </div>
                 <h3 className="font-bold text-lg mb-1 line-clamp-2">{purchase.publishedBook?.book?.title}</h3>
                 <p className="text-slate-400 text-sm mb-3">by {purchase.publishedBook?.book?.user?.name || 'Anonymous'}</p>
+                {progressByBook[purchase.bookId] && (
+                  <div className="mb-3">
+                    <ReadingProgressBar
+                      compact
+                      readCount={progressByBook[purchase.bookId].readCount}
+                      totalChapters={progressByBook[purchase.bookId].totalChapters}
+                    />
+                  </div>
+                )}
                 <div className="flex items-center justify-between text-xs text-slate-500">
                   <span className="flex items-center gap-1">
                     <Clock size={12} /> {new Date(purchase.createdAt).toLocaleDateString()}
