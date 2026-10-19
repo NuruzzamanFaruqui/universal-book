@@ -6,6 +6,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { BookOpen, Bell, Wallet, ChevronDown, Settings, LogOut } from 'lucide-react';
 import { getToken as getFreshToken, logout, onAuthChange } from '@/lib/auth';
 import { API_URL } from '@/lib/config';
+import { notificationHref } from '@/lib/notifications';
 
 
 
@@ -68,9 +69,35 @@ export default function AppNav() {
     });
     if (res.ok) {
       setNotifications(await res.json());
+      await fetch(`${API_URL}/api/social/notifications/read`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
       setUnreadCount(0);
     }
   };
+
+  const refreshUnread = async () => {
+    const token = await getFreshToken();
+    if (!token) return;
+    const res = await fetch(`${API_URL}/api/social/notifications/unread-count`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.ok) setUnreadCount((await res.json()).count || 0);
+  };
+
+  useEffect(() => {
+    const id = setInterval(refreshUnread, 30000);
+    const onFocus = () => refreshUnread();
+    const onRead = () => setUnreadCount(0);
+    window.addEventListener('focus', onFocus);
+    window.addEventListener('notifications-read', onRead);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener('focus', onFocus);
+      window.removeEventListener('notifications-read', onRead);
+    };
+  }, []);
 
   const handleNotificationClick = () => {
     setShowNotifications(!showNotifications);
@@ -159,12 +186,17 @@ export default function AppNav() {
                     <div className="py-8 text-center text-slate-500 text-sm">No notifications yet</div>
                   ) : (
                     notifications.slice(0, 8).map((n: any) => (
-                      <div key={n.id} className={`px-4 py-3 border-b border-slate-700/50 hover:bg-slate-700/30 transition-colors ${!n.isRead ? 'bg-blue-900/10' : ''}`}>
+                      <Link
+                        key={n.id}
+                        href={notificationHref(n)}
+                        onClick={() => setShowNotifications(false)}
+                        className={`block px-4 py-3 border-b border-slate-700/50 hover:bg-slate-700/30 transition-colors ${!n.isRead ? 'bg-blue-900/10' : ''}`}
+                      >
                         <p className="text-sm text-slate-300">{n.message}</p>
                         <p className="text-xs text-slate-500 mt-1">
                           {new Date(n.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                         </p>
-                      </div>
+                      </Link>
                     ))
                   )}
                 </div>

@@ -44,6 +44,7 @@ export class UsersService {
         books: {
           orderBy: { createdAt: 'desc' },
         },
+        followers: { select: { followerId: true } },
       },
     });
   }

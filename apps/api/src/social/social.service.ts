@@ -1,9 +1,14 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 
 @Injectable()
 export class SocialService {
   constructor(private prisma: PrismaService) {}
+
+  private async nameOf(userId: string) {
+    const u = await this.prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
+    return u?.name || 'Someone';
+  }
 
   async createPost(userId: string, content: string, bookId?: string, hashtags?: string[]) {
     const post = await this.prisma.post.create({
@@ -41,6 +46,7 @@ export class SocialService {
           user: { select: { id: true, name: true, avatarUrl: true, profilePhoto: true, isVerified: true } },
           book: { include: { published: { select: { price: true, isPublic: true } }, chapters: { select: { id: true } } } },
           likes: { select: { userId: true } },
+          reposts: { select: { userId: true } },
           comments: {
             include: { user: { select: { id: true, name: true, avatarUrl: true } } },
             orderBy: { createdAt: 'asc' },
@@ -65,6 +71,7 @@ export class SocialService {
           user: { select: { id: true, name: true, avatarUrl: true, profilePhoto: true, isVerified: true } },
           book: { include: { published: { select: { price: true, isPublic: true } }, chapters: { select: { id: true } } } },
           likes: { select: { userId: true } },
+          reposts: { select: { userId: true } },
           comments: {
             include: { user: { select: { id: true, name: true, avatarUrl: true } } },
             orderBy: { createdAt: 'asc' },
@@ -89,6 +96,7 @@ export class SocialService {
         user: { select: { id: true, name: true, avatarUrl: true, profilePhoto: true, isVerified: true } },
         book: { include: { published: { select: { price: true, isPublic: true } } } },
         likes: { select: { userId: true } },
+        reposts: { select: { userId: true } },
         comments: {
           include: { user: { select: { id: true, name: true, avatarUrl: true } } },
           orderBy: { createdAt: 'asc' },
@@ -114,7 +122,12 @@ export class SocialService {
     const post = await this.prisma.post.findUnique({ where: { id: postId } });
     if (post && post.userId !== userId) {
       await this.prisma.notification.create({
-        data: { userId: post.userId, type: 'POST_LIKE', message: 'liked your post', linkId: postId },
+        data: {
+          userId: post.userId,
+          type: 'POST_LIKE',
+          message: `${await this.nameOf(userId)} liked your post`,
+          linkId: postId,
+        },
       });
     }
     return { liked: true };
@@ -129,7 +142,7 @@ export class SocialService {
     const post = await this.prisma.post.findUnique({ where: { id: postId } });
     if (post && post.userId !== userId) {
       await this.prisma.notification.create({
-        data: { userId: post.userId, type: 'POST_COMMENT', message: 'commented on your post', linkId: postId },
+        data: { userId: post.userId, type: 'POST_COMMENT', message: `${await this.nameOf(userId)} commented on your post`, linkId: postId },
       });
     }
     return comment;
@@ -144,7 +157,18 @@ export class SocialService {
     }
     await this.prisma.postRepost.create({ data: { userId, postId } });
     await this.prisma.post.update({ where: { id: postId }, data: { repostsCount: { increment: 1 } } });
-    return { reposted: true };
+    const post = await this.prisma.post.findUnique({ where: { id: postId } });
+    if (post && post.userId !== userId) {
+      await this.prisma.notification.create({
+        data: {
+          userId: post.userId,
+          type: 'POST_REPOST',
+          message: `${await this.nameOf(userId)} reposted your post`,
+          linkId: postId,
+        },
+      });
+    }
+return { reposted: true };
   }
 
   async deletePost(userId: string, postId: string) {
@@ -157,15 +181,16 @@ export class SocialService {
       orderBy: { createdAt: 'desc' },
       take: 50,
     });
-    await this.prisma.notification.updateMany({
-      where: { userId, isRead: false },
-      data: { isRead: true },
-    });
+    // await this.prisma.notification.updateMany({
+    //   where: { userId, isRead: false },
+    //   data: { isRead: true },
+    // });
     return notifs;
   }
 
   async getUnreadNotificationCount(userId: string) {
-    return this.prisma.notification.count({ where: { userId, isRead: false } });
+    const count = await this.prisma.notification.count({ where: { userId, isRead: false } });
+    return { count };
   }
 
   async markNotificationsRead(userId: string) {
@@ -348,7 +373,7 @@ export class SocialService {
         data: {
           userId: recipientId,
           type: 'DIRECT_MESSAGE',
-          message: 'sent you a message',
+          message: `${await this.nameOf(senderId)} sent you a message`,
           linkId: conversationId,
         },
       });
@@ -395,6 +420,12 @@ export class SocialService {
     });
     const connectedIds = connections.map(c => c.senderId === userId ? c.receiverId : c.senderId);
     connectedIds.push(userId);
+
+    const followed = await this.prisma.writerFollow.findMany({
+      where: { followerId: userId },
+      select: { writerId: true },
+    });
+    followed.forEach(f => connectedIds.push(f.writerId));
 
     return this.prisma.user.findMany({
       where: { id: { notIn: connectedIds } },

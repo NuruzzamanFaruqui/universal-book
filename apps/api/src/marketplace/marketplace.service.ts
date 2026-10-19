@@ -172,10 +172,21 @@ async getPublishedBookById(bookId: string, userId?: string) {
     });
     if (existing) {
       await this.prisma.writerFollow.delete({ where: { followerId_writerId: { followerId, writerId } } });
-      return { following: false };
+      const followerCount = await this.prisma.writerFollow.count({ where: { writerId } });
+      return { following: false, followerCount };
     }
     await this.prisma.writerFollow.create({ data: { followerId, writerId } });
-    return { following: true };
+    const follower = await this.prisma.user.findUnique({ where: { id: followerId }, select: { name: true } });
+    await this.prisma.notification.create({
+      data: {
+        userId: writerId,
+        type: 'NEW_FOLLOWER',
+        message: `${follower?.name || 'Someone'} started following you`,
+        linkId: followerId,
+      },
+    });
+    const followerCount = await this.prisma.writerFollow.count({ where: { writerId } });
+    return { following: true, followerCount };
   }
 
   async getActivityFeed(limit = 20) {

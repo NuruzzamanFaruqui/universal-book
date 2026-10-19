@@ -27,6 +27,9 @@ export default function FeedPage() {
 
   useEffect(() => {
     initAuth();
+    const onFocus = () => initAuth();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
   }, []);
 
   const initAuth = async () => {
@@ -214,17 +217,17 @@ function FeedTab({ user }: { user: any }) {
   const [feedType, setFeedType] = useState<'following' | 'explore'>('following');
   const [postContent, setPostContent] = useState('');
   const [posting, setPosting] = useState(false);
+  const [openComments, setOpenComments] = useState<Record<string, boolean>>({});
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
 
   useEffect(() => { fetchPosts(); }, [feedType]);
 
-  const fetchPosts = async () => {
-    setLoading(true);
+  const fetchPosts = async (showSpinner = true) => {
+    if (showSpinner) setLoading(true);
     try {
       const token = await getFreshToken();
       const endpoint = feedType === 'following' ? '/api/social/feed' : '/api/social/explore';
-      const res = await fetch(`${API_URL}${endpoint}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await fetch(`${API_URL}${endpoint}`, { headers: { Authorization: `Bearer ${token}` } });
       if (res.ok) {
         const data = await res.json();
         setPosts(data.posts || []);
@@ -246,19 +249,65 @@ function FeedTab({ user }: { user: any }) {
       });
       if (res.ok) {
         setPostContent('');
-        fetchPosts();
+        fetchPosts(false);
       }
     } catch (e) {}
     setPosting(false);
   };
 
-  const handleLike = async (postId: string) => {
+  const patchPost = (id: string, fn: (p: any) => any) =>
+    setPosts(prev => prev.map(p => (p.id === id ? fn(p) : p)));
+
+  const hasMe = (list: any[] | undefined) => !!list?.some((x: any) => x.userId === user?.id);
+
+  const toggle = async (postId: string, kind: 'like' | 'repost') => {
+    if (!user?.id) return;
+    const listKey = kind === 'like' ? 'likes' : 'reposts';
+    const countKey = kind === 'like' ? 'likes' : 'reposts';
+    const post = posts.find(p => p.id === postId);
+    const was = hasMe(post?.[listKey]);
+
+    // Optimistic update
+    patchPost(postId, p => ({
+      ...p,
+      [listKey]: was
+        ? (p[listKey] || []).filter((x: any) => x.userId !== user.id)
+        : [...(p[listKey] || []), { userId: user.id }],
+      _count: { ...p._count, [countKey]: Math.max(0, (p._count?.[countKey] ?? 0) + (was ? -1 : 1)) },
+    }));
+
+    try {
+      const token = await getFreshToken();
+      const res = await fetch(`${API_URL}/api/social/posts/${postId}/${kind}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error();
+    } catch {
+      fetchPosts(false); // Revert on failure
+    }
+  };
+
+  const handleLike = (id: string) => toggle(id, 'like');
+  const handleRepost = (id: string) => toggle(id, 'repost');
+
+  const handleComment = async (postId: string) => {
+    const content = (drafts[postId] || '').trim();
+    if (!content) return;
     const token = await getFreshToken();
-    await fetch(`${API_URL}/api/social/posts/${postId}/like`, {
+    const res = await fetch(`${API_URL}/api/social/posts/${postId}/comment`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ content }),
     });
-    fetchPosts();
+    if (!res.ok) return;
+    const comment = await res.json();
+    setDrafts(d => ({ ...d, [postId]: '' }));
+    patchPost(postId, p => ({
+      ...p,
+      comments: [...(p.comments || []), comment],
+      _count: { ...p._count, comments: (p._count?.comments ?? 0) + 1 },
+    }));
   };
 
   return (
@@ -303,7 +352,7 @@ function FeedTab({ user }: { user: any }) {
         ))}
       </div>
 
-      {/* Posts */}
+      {/* Posts Feed */}
       {loading ? (
         <div className="space-y-4">
           {[1,2,3].map(i => <div key={i} className="bg-slate-900 rounded-2xl h-40 animate-pulse border border-slate-800" />)}
@@ -316,62 +365,105 @@ function FeedTab({ user }: { user: any }) {
           </p>
         </div>
       ) : (
-        posts.map((post: any) => (
-          <div key={post.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-5 hover:border-slate-700 transition-colors">
-            <div className="flex items-start gap-3 mb-3">
-              <Link href={`/profile/${post.user?.id}`}>
-                <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center font-bold shrink-0 hover:opacity-80 transition-opacity">
-                  {post.user?.name?.[0]?.toUpperCase() || '?'}
+        posts.map((post: any) => {
+          const liked = hasMe(post.likes);
+          const reposted = hasMe(post.reposts);
+
+          return (
+            <div key={post.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-5 hover:border-slate-700 transition-colors">
+              {/* Header */}
+              <div className="flex items-start gap-3 mb-3">
+                <Link href={`/profile/${post.user?.id}`}>
+                  <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center font-bold shrink-0 hover:opacity-80 transition-opacity">
+                    {post.user?.name?.[0]?.toUpperCase() || '?'}
+                  </div>
+                </Link>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <Link href={`/profile/${post.user?.id}`} className="font-semibold text-sm hover:text-blue-400 transition-colors">
+                      {post.user?.name}
+                    </Link>
+                    {post.user?.isVerified && <span className="text-blue-400 text-xs">✓</span>}
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    {new Date(post.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                  </p>
                 </div>
-              </Link>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <Link href={`/profile/${post.user?.id}`} className="font-semibold text-sm hover:text-blue-400 transition-colors">
-                    {post.user?.name}
-                  </Link>
-                  {post.user?.isVerified && <span className="text-blue-400 text-xs">✓</span>}
-                </div>
-                <p className="text-xs text-slate-500">
-                  {new Date(post.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                </p>
               </div>
-            </div>
 
-            <p className="text-slate-200 text-sm leading-relaxed mb-3 whitespace-pre-wrap">{post.content}</p>
+              {/* Body */}
+              <p className="text-slate-200 text-sm leading-relaxed mb-3 whitespace-pre-wrap">{post.content}</p>
 
-            {post.book && (
-              <Link href={`/books/${post.book.id}`}
-                className="flex items-center gap-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl p-3 mb-3 transition-colors">
-                <BookOpen size={18} className="text-blue-400 shrink-0" />
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold truncate">{post.book.title}</p>
-                  <p className="text-xs text-slate-400">{post.book.genre}</p>
+              {/* Attached Book */}
+              {post.book && (
+                <Link href={`/books/${post.book.id}`}
+                  className="flex items-center gap-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl p-3 mb-3 transition-colors">
+                  <BookOpen size={18} className="text-blue-400 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold truncate">{post.book.title}</p>
+                    <p className="text-xs text-slate-400">{post.book.genre}</p>
+                  </div>
+                </Link>
+              )}
+
+              {/* Hashtags */}
+              {post.hashtags?.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mb-3">
+                  {post.hashtags.map((tag: string) => (
+                    <span key={tag} className="text-blue-400 text-xs hover:underline cursor-pointer">#{tag}</span>
+                  ))}
                 </div>
-              </Link>
-            )}
+              )}
 
-            {post.hashtags?.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mb-3">
-                {post.hashtags.map((tag: string) => (
-                  <span key={tag} className="text-blue-400 text-xs hover:underline cursor-pointer">#{tag}</span>
-                ))}
+              {/* Action Bar */}
+              <div className="flex items-center gap-6 pt-2 border-t border-slate-800">
+                <button onClick={() => handleLike(post.id)}
+                  className={`flex items-center gap-2 transition-colors text-sm ${liked ? 'text-red-500' : 'text-slate-500 hover:text-red-400'}`}>
+                  <Heart size={16} fill={liked ? 'currentColor' : 'none'} /> {post._count?.likes ?? post.likesCount ?? 0}
+                </button>
+                <button onClick={() => setOpenComments(o => ({ ...o, [post.id]: !o[post.id] }))}
+                  className="flex items-center gap-2 text-slate-500 hover:text-blue-400 transition-colors text-sm">
+                  <MessageCircle size={16} /> {post._count?.comments ?? post.commentsCount ?? 0}
+                </button>
+                <button onClick={() => handleRepost(post.id)}
+                  className={`flex items-center gap-2 transition-colors text-sm ${reposted ? 'text-green-400' : 'text-slate-500 hover:text-green-400'}`}>
+                  <Repeat2 size={16} /> {post._count?.reposts ?? post.repostsCount ?? 0}
+                </button>
               </div>
-            )}
 
-            <div className="flex items-center gap-6 pt-2 border-t border-slate-800">
-              <button onClick={() => handleLike(post.id)}
-                className="flex items-center gap-2 text-slate-500 hover:text-red-400 transition-colors text-sm">
-                <Heart size={16} /> {post._count?.likes || post.likesCount || 0}
-              </button>
-              <button className="flex items-center gap-2 text-slate-500 hover:text-blue-400 transition-colors text-sm">
-                <MessageCircle size={16} /> {post._count?.comments || post.commentsCount || 0}
-              </button>
-              <button className="flex items-center gap-2 text-slate-500 hover:text-green-400 transition-colors text-sm">
-                <Repeat2 size={16} /> {post._count?.reposts || post.repostsCount || 0}
-              </button>
+              {/* Comment Drawer */}
+              {openComments[post.id] && (
+                <div className="mt-3 space-y-3">
+                  {(post.comments || []).map((c: any) => (
+                    <div key={c.id} className="flex gap-2 text-sm">
+                      <div className="w-7 h-7 rounded-full bg-slate-700 flex items-center justify-center text-xs font-bold shrink-0">
+                        {c.user?.name?.[0]?.toUpperCase() || '?'}
+                      </div>
+                      <div className="bg-slate-800 rounded-xl px-3 py-2">
+                        <Link href={`/profile/${c.user?.id}`} className="font-semibold hover:text-blue-400">{c.user?.name}</Link>
+                        <p className="text-slate-300 whitespace-pre-wrap">{c.content}</p>
+                      </div>
+                    </div>
+                  ))}
+                  <div className="flex gap-2">
+                    <input
+                      value={drafts[post.id] || ''}
+                      onChange={e => setDrafts(d => ({ ...d, [post.id]: e.target.value }))}
+                      onKeyDown={e => { if (e.key === 'Enter') handleComment(post.id); }}
+                      placeholder="Write a comment..."
+                      className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                    />
+                    <button onClick={() => handleComment(post.id)}
+                      disabled={!(drafts[post.id] || '').trim()}
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded-xl text-sm font-semibold">
+                      Send
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
-          </div>
-        ))
+          );
+        })
       )}
     </div>
   );
@@ -779,6 +871,14 @@ function TrendingPanel() {
 // ─── SUGGESTED WRITERS ────────────────────────────────────────────────────────
 function SuggestedWriters() {
   const [writers, setWriters] = useState<any[]>([]);
+  const follow = async (id: string) => {
+    const token = await getFreshToken();
+    const res = await fetch(`${API_URL}/api/marketplace/writers/${id}/follow`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.ok) setWriters(prev => prev.filter(w => w.id !== id));
+  };
 
   useEffect(() => {
     const fetch_ = async () => {
@@ -799,16 +899,21 @@ function SuggestedWriters() {
       <h3 className="font-semibold text-sm mb-3 text-slate-300">👥 Suggested Writers</h3>
       <div className="space-y-3">
         {writers.slice(0, 4).map((w: any) => (
-          <Link key={w.id} href={`/profile/${w.id}`}
-            className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-            <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-xs font-bold shrink-0">
-              {w.name?.[0]?.toUpperCase() || '?'}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">{w.name}</p>
-              <p className="text-xs text-slate-500">{w.books?.length || 0} books</p>
-            </div>
-          </Link>
+          <div key={w.id} className="flex items-center gap-3">
+            <Link href={`/profile/${w.id}`} className="flex items-center gap-3 flex-1 min-w-0 hover:opacity-80 transition-opacity">
+              <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-xs font-bold shrink-0">
+                {w.name?.[0]?.toUpperCase() || '?'}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate">{w.name}</p>
+                <p className="text-xs text-slate-500">{w.books?.length || 0} books</p>
+              </div>
+            </Link>
+            <button onClick={() => follow(w.id)}
+              className="px-3 py-1 bg-blue-600 hover:bg-blue-500 rounded-lg text-xs font-semibold">
+              Follow
+            </button>
+          </div>
         ))}
       </div>
     </div>

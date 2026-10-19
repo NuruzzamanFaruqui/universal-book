@@ -45,9 +45,12 @@ export default function GroupDetailPage() {
 
   const fetchGroup = async () => {
     try {
+      const token = await getFreshToken();
+      if (!token) { router.push('/auth/login'); return; }
+      const headers = { Authorization: `Bearer ${token}` };
       const [groupRes, messagesRes] = await Promise.all([
-        fetch(`${API_URL}/api/groups/${groupId}`),
-        fetch(`${API_URL}/api/groups/${groupId}/messages`),
+        fetch(`${API_URL}/api/groups/${groupId}`, { headers }),
+        fetch(`${API_URL}/api/groups/${groupId}/messages`, { headers }),
       ]);
       if (groupRes.ok) setGroup(await groupRes.json());
       if (messagesRes.ok) setMessages(await messagesRes.json());

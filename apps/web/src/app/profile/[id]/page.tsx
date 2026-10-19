@@ -34,17 +34,22 @@ export default function ProfilePage() {
         fetch(`${API_URL}/api/marketplace/writers/${userId}`),
         fetch(`${API_URL}/api/social/users/${userId}/posts`),
       ]);
+      let profileData: any = null;
       if (profileRes.ok) {
-        const data = await profileRes.json();
-        setProfile(data);
-        setFollowerCount(data.followers?.length || 0);
+        profileData = await profileRes.json();
+        setProfile(profileData);
+        setFollowerCount(profileData.followers?.length || 0);
       }
       if (postsRes.ok) setPosts(await postsRes.json());
       if (token) {
         const userRes = await fetch(`${API_URL}/api/users/me`, {
-          headers: { 'Authorization': `Bearer ${token}` }
+          headers: { Authorization: `Bearer ${token}` },
         });
-        if (userRes.ok) setCurrentUser(await userRes.json());
+        if (userRes.ok) {
+          const me = await userRes.json();
+          setCurrentUser(me);
+          setFollowing(!!profileData?.followers?.some((f: any) => f.followerId === me.id));
+        }
       }
     } catch (e) {}
     finally { setLoading(false); }

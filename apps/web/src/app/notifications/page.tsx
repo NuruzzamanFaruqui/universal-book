@@ -8,6 +8,8 @@ import Link from 'next/link';
 import { Bell, ArrowLeft, Heart, MessageCircle, Users, BookOpen, UserPlus } from 'lucide-react';
 import { getToken as getFreshToken } from '@/lib/auth';
 import { API_URL } from '@/lib/config';
+import { notificationHref } from '@/lib/notifications';
+import { Repeat2, Mail } from 'lucide-react';
 
 
 
@@ -17,6 +19,9 @@ const notifIcons: any = {
   CONNECTION_REQUEST: <UserPlus size={16} className="text-green-400" />,
   CONNECTION_ACCEPTED: <Users size={16} className="text-purple-400" />,
   BOOK_PUBLISHED: <BookOpen size={16} className="text-yellow-400" />,
+  POST_REPOST: <Repeat2 size={16} className="text-green-400" />,
+  NEW_FOLLOWER: <UserPlus size={16} className="text-blue-400" />,
+  DIRECT_MESSAGE: <Mail size={16} className="text-slate-300" />,
 };
 
 export default function NotificationsPage() {
@@ -38,7 +43,13 @@ export default function NotificationsPage() {
         fetch(`${API_URL}/api/social/notifications`, { headers: { 'Authorization': `Bearer ${token}` } }),
         fetch(`${API_URL}/api/social/connections/pending`, { headers: { 'Authorization': `Bearer ${token}` } }),
       ]);
-      if (notifRes.ok) setNotifications(await notifRes.json());
+      if (notifRes.ok) {
+        setNotifications(await notifRes.json());
+        fetch(`${API_URL}/api/social/notifications/read`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+        }).then(() => window.dispatchEvent(new Event('notifications-read')));
+      }
       if (pendingRes.ok) setPendingRequests(await pendingRes.json());
     } catch (e) {}
     finally { setLoading(false); }
@@ -108,9 +119,10 @@ export default function NotificationsPage() {
         ) : (
           <div className="space-y-2">
             {notifications.map((notif: any) => (
-              <div key={notif.id} className={`flex items-start gap-3 p-4 rounded-xl border transition ${
-                notif.isRead ? 'bg-slate-800 border-slate-700' : 'bg-blue-900/20 border-blue-800'
-              }`}>
+              <Link key={notif.id} href={notificationHref(notif)}
+                className={`flex items-start gap-3 p-4 rounded-xl border transition hover:border-blue-500 ${
+                  notif.isRead ? 'bg-slate-800 border-slate-700' : 'bg-blue-900/20 border-blue-800'
+                }`}>
                 <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center flex-shrink-0">
                   {notifIcons[notif.type] || <Bell size={16} className="text-slate-400" />}
                 </div>
@@ -119,7 +131,7 @@ export default function NotificationsPage() {
                   <p className="text-xs text-slate-500 mt-1">{new Date(notif.createdAt).toLocaleDateString()}</p>
                 </div>
                 {!notif.isRead && <div className="w-2 h-2 rounded-full bg-blue-400 flex-shrink-0 mt-2" />}
-              </div>
+              </Link>
             ))}
           </div>
         )}

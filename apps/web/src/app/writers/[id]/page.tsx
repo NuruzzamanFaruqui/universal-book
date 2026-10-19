@@ -34,6 +34,17 @@ export default function WriterProfilePage() {
       const data = await res.json();
       setWriter(data);
       setFollowerCount(data.followers?.length || 0);
+
+      const token = await getFreshToken();
+      if (token) {
+        const meRes = await fetch(`${API_URL}/api/users/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (meRes.ok) {
+          const me = await meRes.json();
+          setFollowing(!!data.followers?.some((f: any) => f.followerId === me.id));
+        }
+      }
     } catch (err: any) {
       setError(err.message);
     } finally {

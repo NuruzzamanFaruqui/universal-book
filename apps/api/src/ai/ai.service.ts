@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, Logger, ServiceUnavailableException } 
 import Anthropic from '@anthropic-ai/sdk';
 import { RuntimeConfigService } from '../config/runtime-config.service';
 
-const DEFAULT_MODEL = 'claude-sonnet-4-20250514';
+const DEFAULT_MODEL = 'claude-sonnet-5-5';
 
 @Injectable()
 export class AiService {
