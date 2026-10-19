@@ -75,20 +75,30 @@ export class BooksService {
   ) {}
 
   async getAllBooks(userId: string) {
-    return this.prisma.book.findMany({
-      where: { userId },
-      include: { chapters: true },
+    const books = await this.prisma.book.findMany({
+      where: {
+        OR: [
+          { userId },
+          { authorGroups: { some: { members: { some: { userId } } } } },
+        ],
+      },
+      include: {
+        chapters: true,
+        user: { select: { id: true, name: true } },
+      },
       orderBy: { createdAt: 'desc' },
     });
+    return books.map(b => ({ ...b, isCollaborator: b.userId !== userId }));
   }
 
   async getBookById(id: string, userId: string) {
     return this.prisma.book.findFirst({
-      where: { id, userId },
+      where: this.editableWhere(id, userId),
       include: {
         chapters: {
           orderBy: { number: 'asc' },
         },
+        user: { select: { id: true, name: true } },
       },
     });
   }
@@ -177,7 +187,7 @@ export class BooksService {
     topic: string; genre?: string; tone?: string; audience?: string; chaptersCount?: number;
   }) {
     const book = await this.prisma.book.findFirst({
-      where: { id: bookId, userId },
+      where: this.editableWhere(bookId, userId),
       include: { chapters: true },
     });
     if (!book) throw new NotFoundException('Book not found');
@@ -342,6 +352,17 @@ export class BooksService {
       select: { id: true },
     });
     if (!collaborator) throw new ForbiddenException('You do not have edit access to this book');
+  }
+
+  /** Owner or author-group member. */
+  private editableWhere(id: string, userId: string) {
+    return {
+      id,
+      OR: [
+        { userId },
+        { authorGroups: { some: { members: { some: { userId } } } } },
+      ],
+    };
   }
 
   async addChapter(bookId: string, userId: string, data: { title?: string; afterId?: string }) {
@@ -593,7 +614,7 @@ export class BooksService {
     audience?: string; synopsis?: string;
     numbering?: 'NONE' | 'DECIMAL'; sectionDepth?: number;
   }) {
-    const book = await this.prisma.book.findFirst({ where: { id: bookId, userId } });
+    const book = await this.prisma.book.findFirst({ where: this.editableWhere(bookId, userId) });
     if (!book) throw new NotFoundException('Book not found');
 
     return this.prisma.book.update({
@@ -616,7 +637,7 @@ export class BooksService {
   /** Everything the author never had to fill in, read back out of the writing. */
   async inferMetadata(bookId: string, userId: string) {
     const book = await this.prisma.book.findFirst({
-      where: { id: bookId, userId },
+      where: this.editableWhere(bookId, userId),
       include: { chapters: { where: { kind: 'CHAPTER' }, orderBy: { number: 'asc' } } },
     });
     if (!book) throw new NotFoundException('Book not found');
@@ -652,7 +673,7 @@ export class BooksService {
   /** Continuity, pacing and voice across the whole manuscript. */
   async reviewBook(bookId: string, userId: string) {
     const book = await this.prisma.book.findFirst({
-      where: { id: bookId, userId },
+      where: this.editableWhere(bookId, userId),
       include: { chapters: { where: { kind: 'CHAPTER' }, orderBy: { number: 'asc' } } },
     });
     if (!book) throw new NotFoundException('Book not found');
@@ -690,7 +711,7 @@ export class BooksService {
    */
   async generateMatter(bookId: string, userId: string) {
     const book = await this.prisma.book.findFirst({
-      where: { id: bookId, userId },
+      where: this.editableWhere(bookId, userId),
       include: { chapters: true, user: { select: { name: true, bio: true } } },
     });
     if (!book) throw new NotFoundException('Book not found');
@@ -757,7 +778,7 @@ export class BooksService {
 
   async generateChapterContent(bookId: string, chapterId: string, userId: string) {
     const book = await this.prisma.book.findFirst({
-      where: { id: bookId, userId },
+      where: this.editableWhere(bookId, userId),
       include: {
         chapters: {
           orderBy: { number: 'asc' },
@@ -965,7 +986,7 @@ export class BooksService {
   /** Feeds the manuscript to the AI and returns its read of the structure. */
   async describeShape(bookId: string, userId: string) {
     const book = await this.prisma.book.findFirst({
-      where: { id: bookId, userId },
+      where: this.editableWhere(bookId, userId),
       include: { chapters: { orderBy: { number: 'asc' } } },
     });
     if (!book) throw new NotFoundException('Book not found');

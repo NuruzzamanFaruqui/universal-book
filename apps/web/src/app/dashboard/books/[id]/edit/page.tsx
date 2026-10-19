@@ -7,7 +7,7 @@ import Link from 'next/link';
 import {
   ArrowLeft, BookOpen, Sparkles, Map, Loader2, PanelRightClose, PanelRightOpen, AlertCircle, Upload,
   FileStack, Wand2, ScrollText, X, Plus, Trash2, ChevronUp, ChevronDown, FileText, PenLine,
-  Pin, PinOff, Maximize2, Minimize2, MessageSquare, Wrench,
+  Pin, PinOff, Maximize2, Minimize2, MessageSquare, Wrench, UserPlus,
 } from 'lucide-react';
 import ManuscriptEditor from '@/components/editor/ManuscriptEditor';
 import DraftWithAi from '@/components/editor/DraftWithAi';
@@ -80,6 +80,8 @@ export default function EditChapterPage() {
   const [chapTitle, setChapTitle] = useState('');
   const [chapSubtitle, setChapSubtitle] = useState('');
   const [contents, setContents] = useState<ContentsEntry[]>([]);
+
+  const [showInvite, setShowInvite] = useState(false);
 
   useEffect(() => { fetchData(); /* eslint-disable-next-line */ }, [bookId]);
 
@@ -311,8 +313,8 @@ export default function EditChapterPage() {
 
       {/* top bar */}
       <header className="flex items-center gap-3 px-4 h-13 py-2.5 bg-slate-800 border-b border-slate-700 shrink-0">
-        <Link href={`/dashboard/books/${bookId}`}
-          className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg transition" title="Back to book">
+        <Link href={user && book?.userId === user.id ? `/dashboard/books/${bookId}` : '/feed?tab=mine'}
+          className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg transition" title="Back">
           <ArrowLeft size={18} />
         </Link>
         <BookOpen size={18} className="text-blue-400 shrink-0" />
@@ -345,16 +347,26 @@ export default function EditChapterPage() {
         <span className="ml-auto text-xs text-slate-400 tabular-nums shrink-0">
           {totalWords.toLocaleString()} words
         </span>
+        {user && book?.userId === user.id && (
+          <button onClick={() => setShowInvite(true)}
+            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 text-[12.5px] text-slate-300 hover:text-white
+                      border border-slate-600 hover:border-purple-500 rounded-lg transition shrink-0">
+            <UserPlus size={13} /> Invite
+          </button>
+        )}
         <Link href={`/books/${bookId}`} target="_blank"
           className="hidden sm:block px-3 py-1.5 text-[12.5px] text-slate-300 hover:text-white
                      border border-slate-600 hover:border-slate-500 rounded-lg transition shrink-0">
           Preview
         </Link>
-        <Link href={`/dashboard/books/${bookId}`}
-          className="px-3 py-1.5 text-[12.5px] font-semibold bg-blue-600 hover:bg-blue-500
+        
+        {user && book?.userId === user.id && (
+          <Link href={`/dashboard/books/${bookId}`} className="px-3 py-1.5 text-[12.5px] font-semibold bg-blue-600 hover:bg-blue-500
                      rounded-lg transition shrink-0">
           Publish
         </Link>
+        )}
+        
         <button onClick={() => setPanelOpen(p => !p)}
           className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg transition"
           title={panelOpen ? 'Hide assistant' : 'Show assistant'}>
@@ -643,7 +655,7 @@ export default function EditChapterPage() {
                                    text-[#55544e] placeholder-[#c4c0b4] focus:outline-none
                                    border-b border-transparent focus:border-[#d8d4c8] pb-1"
                       />
-                      <p className="mt-14 text-[1rem] text-[#1b1b18]">{user?.name || 'Your name'}</p>
+                      <p className="mt-14 text-[1rem] text-[#1b1b18]">{book.user?.name || user?.name || 'Your name'}</p>
                       <p className="mt-10 text-[11px] text-[#a8a49a] font-sans not-italic">
                         Type directly on the page. This is how the title page will look.
                       </p>
@@ -698,6 +710,7 @@ export default function EditChapterPage() {
               This book has no chapters yet.
             </div>
           )}
+          {showInvite && <InviteModal bookId={bookId} onClose={() => setShowInvite(false)} />}
         </main>
 
         {/* assistant workspace */}
@@ -973,6 +986,86 @@ export default function EditChapterPage() {
             </nav>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+function InviteModal({ bookId, onClose }: { bookId: string; onClose: () => void }) {
+  const [following, setFollowing] = useState<any[]>([]);
+  const [collabIds, setCollabIds] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const token = await getFreshToken();
+        const headers = { Authorization: `Bearer ${token}` };
+        const [fRes, cRes] = await Promise.all([
+          fetch(`${API_URL}/api/author-groups/following`, { headers }),
+          fetch(`${API_URL}/api/author-groups/book/${bookId}/collaborators`, { headers }),
+        ]);
+        if (fRes.ok) setFollowing(await fRes.json());
+        if (cRes.ok) setCollabIds((await cRes.json()).map((u: any) => u.id));
+      } catch {}
+      setLoading(false);
+    })();
+  }, [bookId]);
+
+  const invite = async (inviteeId: string) => {
+    setBusyId(inviteeId);
+    setError('');
+    try {
+      const token = await getFreshToken();
+      const res = await fetch(`${API_URL}/api/author-groups/book/${bookId}/invite`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ inviteeId }),
+      });
+      if (res.ok) setCollabIds(ids => [...ids, inviteeId]);
+      else setError((await res.json().catch(() => null))?.message || 'Could not invite this person');
+    } catch {
+      setError('Could not invite this person');
+    }
+    setBusyId(null);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-sm max-h-[70vh] overflow-y-auto"
+           onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-700">
+          <span className="font-semibold">Invite co-writers</span>
+          <button onClick={onClose} className="text-slate-400 hover:text-white"><X size={16} /></button>
+        </div>
+        {loading ? (
+          <p className="px-4 py-6 text-sm text-slate-500 text-center">Loading…</p>
+        ) : following.length === 0 ? (
+          <p className="px-4 py-6 text-sm text-slate-500 text-center">
+            You aren't following anyone yet. Follow a writer to invite them.
+          </p>
+        ) : (
+          following.map((u: any) => {
+            const added = collabIds.includes(u.id);
+            return (
+              <div key={u.id} className="flex items-center gap-3 px-4 py-3 border-b border-slate-800">
+                <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-xs font-bold shrink-0">
+                  {u.name?.[0]?.toUpperCase() || '?'}
+                </div>
+                <span className="flex-1 text-sm truncate">{u.name}</span>
+                <button onClick={() => invite(u.id)} disabled={added || busyId === u.id}
+                  className={`px-3 py-1 rounded-lg text-xs font-semibold transition ${
+                    added ? 'bg-slate-700 text-slate-400' : 'bg-purple-600 hover:bg-purple-500 disabled:opacity-50'
+                  }`}>
+                  {added ? 'Added' : busyId === u.id ? '…' : 'Invite'}
+                </button>
+              </div>
+            );
+          })
+        )}
+        {error && <p className="px-4 py-3 text-xs text-red-400">{error}</p>}
       </div>
     </div>
   );

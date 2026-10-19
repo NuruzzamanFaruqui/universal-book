@@ -10,6 +10,8 @@ export function notificationHref(n: { type: string; linkId?: string | null }) {
       return n.linkId ? `/profile/${n.linkId}` : '/notifications';
     case 'DIRECT_MESSAGE':
       return n.linkId ? `/messages/${n.linkId}` : '/messages';
+    case 'BOOK_COLLAB_INVITE':
+      return n.linkId ? `/dashboard/books/${n.linkId}/edit` : '/feed?tab=mine';
     default:
       return '/notifications';
   }

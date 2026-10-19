@@ -12,6 +12,21 @@ export class AuthorGroupsController {
     return this.authorGroupsService.getUserAuthorGroups(req.user.id);
   }
 
+  @Get('following')
+  async getFollowing(@Request() req: any) {
+    return this.authorGroupsService.listFollowing(req.user.id);
+  }
+
+  @Get('book/:bookId/collaborators')
+  async getCollaborators(@Param('bookId') bookId: string, @Request() req: any) {
+    return this.authorGroupsService.getBookCollaborators(bookId, req.user.id);
+  }
+
+  @Post('book/:bookId/invite')
+  async inviteToBook(@Param('bookId') bookId: string, @Body() body: { inviteeId: string }, @Request() req: any) {
+    return this.authorGroupsService.inviteToBook(bookId, req.user.id, body.inviteeId);
+  }
+
   @Get(':id')
   async getGroup(@Param('id') id: string) {
     return this.authorGroupsService.getAuthorGroupById(id);

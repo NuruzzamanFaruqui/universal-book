@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 
 @Injectable()
@@ -91,6 +91,77 @@ export class AuthorGroupsService {
       where: { id: groupId },
       data: { bookId },
     });
+  }
+
+  /** People the user follows, for the invite picker. */
+  async listFollowing(userId: string) {
+    const rows = await this.prisma.writerFollow.findMany({
+      where: { followerId: userId },
+      include: { writer: { select: { id: true, name: true, avatarUrl: true } } },
+    });
+    return rows.map(r => r.writer);
+  }
+
+  /** Everyone (except the owner) who can co-edit this book. Owner only. */
+  async getBookCollaborators(bookId: string, userId: string) {
+    const book = await this.prisma.book.findUnique({ where: { id: bookId }, select: { userId: true } });
+    if (!book) throw new NotFoundException('Book not found');
+    if (book.userId !== userId) throw new ForbiddenException('Only the book owner can see collaborators');
+    const members = await this.prisma.authorGroupMember.findMany({
+      where: { group: { bookId }, userId: { not: userId } },
+      include: { user: { select: { id: true, name: true, avatarUrl: true } } },
+    });
+    return members.map(m => m.user);
+  }
+
+  /** Invite a followed user to co-write a book. Creates the book's group on first use. */
+  async inviteToBook(bookId: string, ownerId: string, inviteeId: string) {
+    const book = await this.prisma.book.findUnique({
+      where: { id: bookId },
+      select: { id: true, userId: true, title: true },
+    });
+    if (!book) throw new NotFoundException('Book not found');
+    if (book.userId !== ownerId) throw new ForbiddenException('Only the book owner can invite collaborators');
+    if (inviteeId === ownerId) throw new BadRequestException('You cannot invite yourself');
+
+    const follows = await this.prisma.writerFollow.findUnique({
+      where: { followerId_writerId: { followerId: ownerId, writerId: inviteeId } },
+    });
+    if (!follows) throw new BadRequestException('You can only invite people you follow');
+
+    let group = await this.prisma.authorGroup.findFirst({ where: { bookId, createdBy: ownerId } });
+    if (!group) {
+      group = await this.prisma.authorGroup.create({
+        data: {
+          name: `${book.title || 'Untitled book'} — co-writers`,
+          bookId,
+          createdBy: ownerId,
+        },
+      });
+      await this.prisma.authorGroupMember.create({
+        data: { userId: ownerId, groupId: group.id, role: 'owner' },
+      });
+    }
+
+    const existing = await this.prisma.authorGroupMember.findUnique({
+      where: { userId_groupId: { userId: inviteeId, groupId: group.id } },
+    });
+    if (existing) return { alreadyMember: true };
+
+    await this.prisma.authorGroupMember.create({
+      data: { userId: inviteeId, groupId: group.id, role: 'writer' },
+    });
+
+    const owner = await this.prisma.user.findUnique({ where: { id: ownerId }, select: { name: true } });
+    await this.prisma.notification.create({
+      data: {
+        userId: inviteeId,
+        type: 'BOOK_COLLAB_INVITE',
+        message: `${owner?.name || 'Someone'} invited you to co-write "${book.title || 'Untitled book'}"`,
+        linkId: bookId,
+      },
+    });
+    return { invited: true };
   }
 
   async deleteAuthorGroup(groupId: string, ownerId: string) {

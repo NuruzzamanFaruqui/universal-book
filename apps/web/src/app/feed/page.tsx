@@ -656,14 +656,24 @@ function MineTab({ creditBalance }: { creditBalance: number | null }) {
                       book.status === 'GENERATING' ? 'bg-yellow-900/50 text-yellow-400' :
                       'bg-slate-700 text-slate-400'
                     }`}>{book.status}</span>
+                    {book.isCollaborator && (
+                      <p className="text-xs text-purple-400 mt-1">Shared by {book.user?.name}</p>
+                    )}
                     <span className="text-slate-500 text-xs">{book.chapters?.length || 0} chapters</span>
                   </div>
                 </div>
                 <div className="flex gap-2 shrink-0">
-                  <Link href={`/dashboard/books/${book.id}`}
-                    className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg text-xs font-medium transition-colors">
-                    Manage
-                  </Link>
+                  {book.isCollaborator ? (
+                    <Link href={`/dashboard/books/${book.id}/edit`}
+                      className="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 rounded-lg text-xs font-medium transition-colors">
+                      Co-Edit Book
+                    </Link>
+                  ) : (
+                    <Link href={`/dashboard/books/${book.id}`}
+                      className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg text-xs font-medium transition-colors">
+                      Manage
+                    </Link>
+                  )}
                 </div>
               </div>
             ))}
