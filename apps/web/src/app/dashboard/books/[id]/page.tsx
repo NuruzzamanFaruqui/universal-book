@@ -4,7 +4,7 @@ export const dynamic = 'force-dynamic';
 
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { BookOpen, ArrowLeft, Sparkles, Globe, Lock, DollarSign } from 'lucide-react';
+import { BookOpen, ArrowLeft, Sparkles, Globe, Lock, DollarSign, PenLine } from 'lucide-react';
 import Link from 'next/link';
 import { getToken as getFreshToken } from '@/lib/auth';
 import { API_URL } from '@/lib/config';
@@ -39,9 +39,8 @@ export default function BookDetailPage() {
       if (!res.ok) throw new Error('Failed to load book');
       const data = await res.json();
       setBook(data);
-      // Check if published
-      const pubRes = await fetch(`${API_URL}/api/marketplace/books/${bookId}`);
-      if (pubRes.ok) setIsPublished(true);
+      setIsPublished(!!data.published?.isPublic);
+      if (data.published?.price != null) setPrice(data.published.price);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -74,9 +73,15 @@ export default function BookDetailPage() {
       const res = await fetch(`${API_URL}/api/marketplace/books/${bookId}/publish`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ price }),
+        // The spinner steps by 0.99, which leaves float noise like 2.9699999 that
+        // the API rejects ("at most 2 decimals"). Round before sending.
+        body: JSON.stringify({ price: Math.round((Number(price) || 0) * 100) / 100 }),
       });
-      if (!res.ok) throw new Error('Failed to publish book');
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        const msg = Array.isArray(body?.message) ? body.message.join(' ') : body?.message;
+        throw new Error(msg || 'Failed to publish book');
+      }
       setIsPublished(true);
       setShowPublishModal(false);
     } catch (err: any) {
@@ -100,7 +105,15 @@ export default function BookDetailPage() {
     }
   };
 
-  const allChaptersGenerated = book?.chapters?.every((c: any) => c.content);
+  // Front/back matter (title page, dedication…) lives in the same list but isn't
+  // a chapter — it shouldn't get a Generate button or block publishing.
+  const KIND_ORDER: Record<string, number> = { FRONT_MATTER: 0, CHAPTER: 1, BACK_MATTER: 2 };
+  const chapters = [...(book?.chapters || [])]
+    .filter((c: any) => (c.kind ?? 'CHAPTER') === 'CHAPTER')
+    .sort((a: any, b: any) => (KIND_ORDER[a.kind] ?? 1) - (KIND_ORDER[b.kind] ?? 1) || a.number - b.number);
+  const plain = (html: string) => html.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+  const hasText = (c: any) => !!c.content && plain(c.content).length > 0;
+  const allChaptersGenerated = chapters.length > 0 && chapters.every(hasText);
 
   if (loading) return (
     <div className="min-h-screen bg-slate-900 flex items-center justify-center">
@@ -166,16 +179,39 @@ export default function BookDetailPage() {
             <div className="mb-10">
               <div className="flex items-center gap-3 mb-2">
                 <BookOpen className="text-blue-400" size={36} />
-                <h1 className="text-4xl font-bold">{book.title}</h1>
+                <h1 className={`text-4xl font-bold ${book.title ? '' : 'text-slate-500 italic'}`}>{book.title || 'Untitled book'}</h1>
               </div>
               {book.subtitle && <p className="text-slate-400 text-lg mt-1">{book.subtitle}</p>}
               <div className="flex items-center gap-3 mt-3 flex-wrap">
-                <span className="text-slate-400 text-sm bg-slate-800 px-3 py-1 rounded-full">{book.genre}</span>
-                <span className="text-slate-400 text-sm bg-slate-800 px-3 py-1 rounded-full">{book.tone}</span>
+                {book.genre && <span className="text-slate-400 text-sm bg-slate-800 px-3 py-1 rounded-full">{book.genre}</span>}
+                {book.tone && <span className="text-slate-400 text-sm bg-slate-800 px-3 py-1 rounded-full">{book.tone}</span>}
                 {isPublished && <span className="text-green-400 text-sm bg-green-900/30 px-3 py-1 rounded-full flex items-center gap-1"><Globe size={12} /> Published</span>}
                 {!isPublished && <span className="text-slate-500 text-sm bg-slate-800 px-3 py-1 rounded-full flex items-center gap-1"><Lock size={12} /> Draft</span>}
               </div>
               {book.synopsis && <p className="text-slate-300 mt-4 leading-relaxed">{book.synopsis}</p>}
+              <div className="flex items-center gap-3 mt-6 flex-wrap">
+                <Link href={`/dashboard/books/${bookId}/edit`}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-semibold transition">
+                  <PenLine size={16} /> Open editor
+                </Link>
+                {isPublished ? (
+                  <>
+                    <Link href={`/books/${bookId}`}
+                      className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm font-semibold transition">
+                      <Globe size={16} /> View on marketplace
+                    </Link>
+                    <button onClick={handleUnpublish}
+                      className="px-4 py-2 border border-slate-600 text-slate-300 hover:text-white rounded-lg text-sm transition">
+                      Unpublish
+                    </button>
+                  </>
+                ) : (
+                  <button onClick={() => setShowPublishModal(true)}
+                    className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-500 rounded-lg text-sm font-semibold transition">
+                    <Globe size={16} /> Publish to marketplace
+                  </button>
+                )}
+              </div>
             </div>
 
             {!allChaptersGenerated && (
@@ -185,25 +221,25 @@ export default function BookDetailPage() {
             )}
 
             <div className="space-y-4">
-              <h2 className="text-2xl font-bold mb-4">Chapters ({book.chapters?.length || 0})</h2>
-              {book.chapters?.map((chapter: any) => (
+              <h2 className="text-2xl font-bold mb-4">Chapters ({chapters.length})</h2>
+              {chapters.map((chapter: any) => (
                 <div key={chapter.id} className="bg-slate-800/50 border border-slate-700 rounded-xl p-6">
                   <div className="flex items-center justify-between mb-3">
                     <h3 className="text-lg font-semibold">
-                      Chapter {chapter.number}: {chapter.title}
+                      Chapter {chapter.number}{chapter.title ? `: ${chapter.title}` : ''}
                     </h3>
-                    {!chapter.content && (
+                    {!hasText(chapter) && (
                       <button onClick={() => generateChapter(chapter.id)} disabled={generating === chapter.id}
                         className="flex items-center gap-1 px-3 py-1 bg-purple-700 hover:bg-purple-600 rounded-lg text-sm transition disabled:opacity-50">
                         <Sparkles size={14} />
                         {generating === chapter.id ? 'Writing...' : 'Generate'}
                       </button>
                     )}
-                    {chapter.content && <span className="text-xs text-green-400 bg-green-900/30 px-2 py-0.5 rounded-full">✓ Written</span>}
+                    {hasText(chapter) && <span className="text-xs text-green-400 bg-green-900/30 px-2 py-0.5 rounded-full">✓ Written</span>}
                   </div>
                   {chapter.summary && <p className="text-slate-500 text-sm mb-2 italic">{chapter.summary}</p>}
                   <p className="text-slate-400 text-sm">
-                    {chapter.content ? chapter.content.substring(0, 300) + '...' : 'Click Generate to write this chapter with AI.'}
+                    {hasText(chapter) ? plain(chapter.content).substring(0, 300) + '…' : 'Empty — write it in the editor, or click Generate to draft it with AI.'}
                   </p>
                 </div>
               ))}

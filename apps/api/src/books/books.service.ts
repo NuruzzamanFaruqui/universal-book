@@ -84,6 +84,7 @@ export class BooksService {
       },
       include: {
         chapters: true,
+        published: { select: { isPublic: true, price: true } },
         user: { select: { id: true, name: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -98,6 +99,7 @@ export class BooksService {
         chapters: {
           orderBy: { number: 'asc' },
         },
+        published: { select: { isPublic: true, price: true } },
         user: { select: { id: true, name: true } },
       },
     });

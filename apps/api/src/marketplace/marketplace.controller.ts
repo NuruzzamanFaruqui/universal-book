@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Query, Request, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, Request, NotFoundException, UseGuards } from '@nestjs/common';
 import { MarketplaceService } from './marketplace.service';
 import { AddReviewDto, PublishBookDto } from './dto/marketplace.dto';
 import { JwtAuthGuard, OptionalJwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -35,7 +35,7 @@ export class MarketplaceController {
   async getBook(@Param('bookId') bookId: string, @Request() req: any) {
     const userId = req.user?.id;
     const book = await this.marketplaceService.getPublishedBookById(bookId, userId);
-    if (!book) throw new Error('Book not found or not published');
+    if (!book) throw new NotFoundException('Book not found or not published');
     return book;
   }
 

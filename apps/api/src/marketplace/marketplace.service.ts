@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 
 @Injectable()
@@ -101,7 +101,9 @@ async getPublishedBookById(bookId: string, userId?: string) {
       },
     });
 
+    // Unpublishing only sets isPublic=false, so hide those from everyone but the author.
     if (!published) return null;
+    if (!published.isPublic && published.book.userId !== userId) return null;
 
     // Check if user has purchased or is the author
     let hasAccess = false;
@@ -128,7 +130,7 @@ async getPublishedBookById(bookId: string, userId?: string) {
 
   async publishBook(bookId: string, userId: string, price: number) {
     const book = await this.prisma.book.findFirst({ where: { id: bookId, userId } });
-    if (!book) throw new Error('Book not found');
+    if (!book) throw new NotFoundException('Book not found');
     const existing = await this.prisma.publishedBook.findUnique({ where: { bookId } });
     if (existing) {
       return this.prisma.publishedBook.update({ where: { bookId }, data: { price, isPublic: true } });
@@ -142,7 +144,7 @@ async getPublishedBookById(bookId: string, userId?: string) {
 
   async unpublishBook(bookId: string, userId: string) {
     const book = await this.prisma.book.findFirst({ where: { id: bookId, userId } });
-    if (!book) throw new Error('Book not found');
+    if (!book) throw new NotFoundException('Book not found');
     return this.prisma.publishedBook.update({ where: { bookId }, data: { isPublic: false } });
   }
 
