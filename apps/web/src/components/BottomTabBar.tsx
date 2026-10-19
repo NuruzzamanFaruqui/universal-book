@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { Home, BookOpen, PlusCircle, LayoutDashboard, User, X, Sparkles, PenSquare, Upload, FileEdit } from 'lucide-react';
 import { getToken, logout } from '@/lib/auth';
 import { API_URL } from '@/lib/config';
+import Avatar from '@/components/Avatar';
 
 export default function BottomTabBar() {
   const pathname = usePathname();
@@ -222,9 +223,7 @@ function MeSheetContent({ onClose }: { onClose: () => void }) {
     <div className="px-4 pb-8 pt-2">
       {/* Profile Header */}
       <div className="flex items-center gap-3 py-4 border-b border-slate-700 mb-2">
-        <div className="w-12 h-12 rounded-full bg-blue-600 flex items-center justify-center text-xl font-bold">
-          {user?.name?.[0]?.toUpperCase() || '?'}
-        </div>
+        <Avatar user={user} className="w-12 h-12 text-xl shrink-0" />
         <div className="flex-1 min-w-0">
           <p className="font-bold truncate">{user?.name || 'Loading...'}</p>
           <p className="text-slate-400 text-sm truncate">{user?.email}</p>

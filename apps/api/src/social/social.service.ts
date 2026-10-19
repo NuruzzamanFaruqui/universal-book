@@ -18,7 +18,7 @@ export class SocialService {
         book: { select: { id: true, title: true, genre: true } },
         likes: { select: { userId: true } },
         comments: {
-          include: { user: { select: { id: true, name: true, avatarUrl: true } } },
+          include: { user: { select: { id: true, name: true, avatarUrl: true, profilePhoto: true } } },
           orderBy: { createdAt: 'asc' },
           take: 3,
         },
@@ -48,7 +48,7 @@ export class SocialService {
           likes: { select: { userId: true } },
           reposts: { select: { userId: true } },
           comments: {
-            include: { user: { select: { id: true, name: true, avatarUrl: true } } },
+            include: { user: { select: { id: true, name: true, avatarUrl: true, profilePhoto: true } } },
             orderBy: { createdAt: 'asc' },
             take: 3,
           },
@@ -73,7 +73,7 @@ export class SocialService {
           likes: { select: { userId: true } },
           reposts: { select: { userId: true } },
           comments: {
-            include: { user: { select: { id: true, name: true, avatarUrl: true } } },
+            include: { user: { select: { id: true, name: true, avatarUrl: true, profilePhoto: true } } },
             orderBy: { createdAt: 'asc' },
             take: 3,
           },
@@ -98,7 +98,7 @@ export class SocialService {
         likes: { select: { userId: true } },
         reposts: { select: { userId: true } },
         comments: {
-          include: { user: { select: { id: true, name: true, avatarUrl: true } } },
+          include: { user: { select: { id: true, name: true, avatarUrl: true, profilePhoto: true } } },
           orderBy: { createdAt: 'asc' },
           take: 3,
         },
@@ -136,7 +136,7 @@ export class SocialService {
   async commentOnPost(userId: string, postId: string, content: string) {
     const comment = await this.prisma.postComment.create({
       data: { userId, postId, content },
-      include: { user: { select: { id: true, name: true, avatarUrl: true } } },
+      include: { user: { select: { id: true, name: true, avatarUrl: true, profilePhoto: true } } },
     });
     await this.prisma.post.update({ where: { id: postId }, data: { commentsCount: { increment: 1 } } });
     const post = await this.prisma.post.findUnique({ where: { id: postId } });

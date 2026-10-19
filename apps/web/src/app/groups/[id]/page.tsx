@@ -8,6 +8,7 @@ import { ArrowLeft, Users, Send, Globe, Lock } from 'lucide-react';
 import AppNav from '@/components/AppNav';
 import { getToken as getFreshToken } from '@/lib/auth';
 import { API_URL } from '@/lib/config';
+import Avatar from '@/components/Avatar';
 
 
 
@@ -134,9 +135,7 @@ export default function GroupDetailPage() {
               <div className="space-y-2">
                 {group.members?.slice(0, 10).map((member: any) => (
                   <div key={member.userId} className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center text-xs font-bold flex-shrink-0">
-                      {member.user?.name?.[0] || '?'}
-                    </div>
+                    <Avatar user={member.user} className="w-7 h-7 text-xs flex-shrink-0" />
                     <div className="flex-1 min-w-0">
                       <div className="text-sm truncate">{member.user?.name}</div>
                     </div>
@@ -164,9 +163,7 @@ export default function GroupDetailPage() {
               ) : (
                 messages.map((msg: any) => (
                   <div key={msg.id} className={`flex gap-3 ${msg.userId === currentUser?.id ? 'flex-row-reverse' : ''}`}>
-                    <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-xs font-bold flex-shrink-0">
-                      {msg.user?.name?.[0] || '?'}
-                    </div>
+                    <Avatar user={msg.user} className="w-8 h-8 text-xs flex-shrink-0" />
                     <div className={`max-w-xs lg:max-w-md ${msg.userId === currentUser?.id ? 'items-end' : 'items-start'} flex flex-col`}>
                       <div className="text-xs text-slate-500 mb-1">
                         {msg.userId !== currentUser?.id && <span className="mr-2">{msg.user?.name}</span>}

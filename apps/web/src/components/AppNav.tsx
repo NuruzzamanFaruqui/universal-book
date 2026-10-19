@@ -7,6 +7,7 @@ import { BookOpen, Bell, Wallet, ChevronDown, Settings, LogOut } from 'lucide-re
 import { getToken as getFreshToken, logout, onAuthChange } from '@/lib/auth';
 import { API_URL } from '@/lib/config';
 import { notificationHref } from '@/lib/notifications';
+import Avatar from '@/components/Avatar';
 
 
 
@@ -210,9 +211,7 @@ export default function AppNav() {
               onClick={() => { setShowDropdown(!showDropdown); setShowNotifications(false); }}
               className="flex items-center gap-2 p-1.5 hover:bg-slate-800 rounded-lg transition-colors"
             >
-              <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-sm font-bold text-white">
-                {user?.name?.[0]?.toUpperCase() || '?'}
-              </div>
+              <Avatar user={user} className="w-8 h-8 text-sm" />
               <ChevronDown size={14} className="text-slate-400 hidden sm:block" />
             </button>
 

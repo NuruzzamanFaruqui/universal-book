@@ -8,6 +8,7 @@ import Link from 'next/link';
 import { BookOpen, ArrowLeft, Users, Heart } from 'lucide-react';
 import { getToken as getFreshToken } from '@/lib/auth';
 import { API_URL } from '@/lib/config';
+import Avatar from '@/components/Avatar';
 
 
 
@@ -96,9 +97,7 @@ export default function WriterProfilePage() {
         <div className="bg-slate-800 border border-slate-700 rounded-2xl p-8 mb-8">
           <div className="flex items-start justify-between flex-wrap gap-4">
             <div className="flex items-center gap-5">
-              <div className="w-20 h-20 rounded-full bg-blue-600 flex items-center justify-center text-3xl font-bold flex-shrink-0">
-                {writer.name?.[0] || '?'}
-              </div>
+              <Avatar user={writer} className="w-20 h-20 text-3xl flex-shrink-0" />
               <div>
                 <h1 className="text-3xl font-bold mb-1">{writer.name}</h1>
                 {writer.bio && <p className="text-slate-400 mb-3 max-w-lg">{writer.bio}</p>}

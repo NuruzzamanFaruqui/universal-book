@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import AppNav from '@/components/AppNav';
 import BottomTabBar from '@/components/BottomTabBar';
+import Avatar from '@/components/Avatar';
 import { getToken as getFreshToken } from '@/lib/auth';
 import { API_URL } from '@/lib/config';
 
@@ -68,9 +69,7 @@ export default function FeedPage() {
             {/* Profile Card */}
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
               <div className="flex items-center gap-3 mb-3">
-                <div className="w-11 h-11 rounded-full bg-blue-600 flex items-center justify-center text-lg font-bold shrink-0">
-                  {user?.name?.[0]?.toUpperCase() || '?'}
-                </div>
+                <Avatar user={user} className="w-11 h-11 text-lg shrink-0" />
                 <div className="min-w-0">
                   <p className="font-bold text-sm truncate">{user?.name}</p>
                   <p className="text-slate-400 text-xs truncate">{user?.email}</p>
@@ -315,9 +314,7 @@ function FeedTab({ user }: { user: any }) {
       {/* Post Composer */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
         <div className="flex gap-3">
-          <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center font-bold shrink-0">
-            {user?.name?.[0]?.toUpperCase() || '?'}
-          </div>
+          <Avatar user={user} className="w-10 h-10 shrink-0" />
           <div className="flex-1">
             <textarea
               value={postContent}
@@ -374,9 +371,7 @@ function FeedTab({ user }: { user: any }) {
               {/* Header */}
               <div className="flex items-start gap-3 mb-3">
                 <Link href={`/profile/${post.user?.id}`}>
-                  <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center font-bold shrink-0 hover:opacity-80 transition-opacity">
-                    {post.user?.name?.[0]?.toUpperCase() || '?'}
-                  </div>
+                  <Avatar user={post.user} className="w-10 h-10 shrink-0 hover:opacity-80 transition-opacity" />
                 </Link>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
@@ -436,9 +431,7 @@ function FeedTab({ user }: { user: any }) {
                 <div className="mt-3 space-y-3">
                   {(post.comments || []).map((c: any) => (
                     <div key={c.id} className="flex gap-2 text-sm">
-                      <div className="w-7 h-7 rounded-full bg-slate-700 flex items-center justify-center text-xs font-bold shrink-0">
-                        {c.user?.name?.[0]?.toUpperCase() || '?'}
-                      </div>
+                      <Avatar user={c.user} className="w-7 h-7 text-xs shrink-0" fallbackClassName="bg-slate-700 text-white" />
                       <div className="bg-slate-800 rounded-xl px-3 py-2">
                         <Link href={`/profile/${c.user?.id}`} className="font-semibold hover:text-blue-400">{c.user?.name}</Link>
                         <p className="text-slate-300 whitespace-pre-wrap">{c.content}</p>
@@ -924,9 +917,7 @@ function SuggestedWriters() {
         {writers.slice(0, 4).map((w: any) => (
           <div key={w.id} className="flex items-center gap-3">
             <Link href={`/profile/${w.id}`} className="flex items-center gap-3 flex-1 min-w-0 hover:opacity-80 transition-opacity">
-              <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-xs font-bold shrink-0">
-                {w.name?.[0]?.toUpperCase() || '?'}
-              </div>
+              <Avatar user={w} className="w-8 h-8 text-xs shrink-0" />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium truncate">{w.name}</p>
                 <p className="text-xs text-slate-500">{w.books?.length || 0} books</p>

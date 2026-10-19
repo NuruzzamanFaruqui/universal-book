@@ -9,7 +9,7 @@ export class GroupsService {
     return this.prisma.userGroup.findMany({
       where: { isPublic: true },
       include: {
-        creator: { select: { id: true, name: true, avatarUrl: true } },
+        creator: { select: { id: true, name: true, avatarUrl: true, profilePhoto: true } },
         members: { select: { userId: true, role: true } },
         _count: { select: { members: true, messages: true } },
       },
@@ -43,15 +43,15 @@ export class GroupsService {
     return this.prisma.userGroup.findUnique({
       where: { id: groupId },
       include: {
-        creator: { select: { id: true, name: true, avatarUrl: true } },
+        creator: { select: { id: true, name: true, avatarUrl: true, profilePhoto: true } },
         members: {
           include: {
-            user: { select: { id: true, name: true, avatarUrl: true } },
+            user: { select: { id: true, name: true, avatarUrl: true, profilePhoto: true } },
           },
         },
         messages: {
           include: {
-            user: { select: { id: true, name: true, avatarUrl: true } },
+            user: { select: { id: true, name: true, avatarUrl: true, profilePhoto: true } },
           },
           orderBy: { createdAt: 'desc' },
           take: 50,
@@ -100,7 +100,7 @@ export class GroupsService {
     return this.prisma.groupMessage.create({
       data: { userId, groupId, message },
       include: {
-        user: { select: { id: true, name: true, avatarUrl: true } },
+        user: { select: { id: true, name: true, avatarUrl: true, profilePhoto: true } },
       },
     });
   }
@@ -111,7 +111,7 @@ export class GroupsService {
     return this.prisma.groupMessage.findMany({
       where: { groupId },
       include: {
-        user: { select: { id: true, name: true, avatarUrl: true } },
+        user: { select: { id: true, name: true, avatarUrl: true, profilePhoto: true } },
       },
       orderBy: { createdAt: 'asc' },
       take: 100,

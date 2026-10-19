@@ -27,10 +27,10 @@ export class AuthorGroupsService {
     return this.prisma.authorGroup.findUnique({
       where: { id: groupId },
       include: {
-        creator: { select: { id: true, name: true, avatarUrl: true } },
+        creator: { select: { id: true, name: true, avatarUrl: true, profilePhoto: true } },
         members: {
           include: {
-            user: { select: { id: true, name: true, avatarUrl: true } },
+            user: { select: { id: true, name: true, avatarUrl: true, profilePhoto: true } },
           },
         },
         book: {
@@ -67,7 +67,7 @@ export class AuthorGroupsService {
     return this.prisma.authorGroupMember.create({
       data: { userId: inviteeId, groupId, role },
       include: {
-        user: { select: { id: true, name: true, avatarUrl: true } },
+        user: { select: { id: true, name: true, avatarUrl: true, profilePhoto: true } },
       },
     });
   }
@@ -97,7 +97,7 @@ export class AuthorGroupsService {
   async listFollowing(userId: string) {
     const rows = await this.prisma.writerFollow.findMany({
       where: { followerId: userId },
-      include: { writer: { select: { id: true, name: true, avatarUrl: true } } },
+      include: { writer: { select: { id: true, name: true, avatarUrl: true, profilePhoto: true } } },
     });
     return rows.map(r => r.writer);
   }
@@ -109,7 +109,7 @@ export class AuthorGroupsService {
     if (book.userId !== userId) throw new ForbiddenException('Only the book owner can see collaborators');
     const members = await this.prisma.authorGroupMember.findMany({
       where: { group: { bookId }, userId: { not: userId } },
-      include: { user: { select: { id: true, name: true, avatarUrl: true } } },
+      include: { user: { select: { id: true, name: true, avatarUrl: true, profilePhoto: true } } },
     });
     return members.map(m => m.user);
   }

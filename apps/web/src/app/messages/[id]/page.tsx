@@ -9,6 +9,7 @@ import { ArrowLeft, Send } from 'lucide-react';
 import { subscribeToMessages, ChatMessage } from '@/lib/realtime';
 import { getToken, getStoredToken } from '@/lib/auth';
 import { API_URL, POLL } from '@/lib/config';
+import Avatar from '@/components/Avatar';
 
 export default function ChatPage() {
   const params = useParams();
@@ -120,9 +121,7 @@ export default function ChatPage() {
             return (
               <div key={msg.id || i} className={`flex gap-2 ${isOwn ? 'flex-row-reverse' : ''}`}>
                 {!isOwn && (
-                  <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-xs font-bold flex-shrink-0">
-                    {msg.sender?.name?.[0] || '?'}
-                  </div>
+                  <Avatar user={msg.sender} className="w-8 h-8 text-xs flex-shrink-0" />
                 )}
                 <div className={`max-w-xs lg:max-w-md px-4 py-2 rounded-2xl text-sm ${
                   isOwn ? 'bg-blue-600 text-white rounded-tr-sm' : 'bg-slate-700 text-slate-200 rounded-tl-sm'

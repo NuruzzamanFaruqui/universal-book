@@ -26,7 +26,7 @@ export class MarketplaceService {
         include: {
           book: {
             include: {
-              user: { select: { id: true, name: true, avatarUrl: true } },
+              user: { select: { id: true, name: true, avatarUrl: true, profilePhoto: true } },
               chapters: { select: { id: true } },
             },
           },
@@ -47,7 +47,7 @@ export class MarketplaceService {
       include: {
         book: {
           include: {
-            user: { select: { id: true, name: true, avatarUrl: true } },
+            user: { select: { id: true, name: true, avatarUrl: true, profilePhoto: true } },
             chapters: { select: { id: true } },
           },
         },
@@ -63,7 +63,7 @@ export class MarketplaceService {
       include: {
         book: {
           include: {
-            user: { select: { id: true, name: true, avatarUrl: true } },
+            user: { select: { id: true, name: true, avatarUrl: true, profilePhoto: true } },
             chapters: { select: { id: true } },
           },
         },
@@ -80,7 +80,7 @@ async getPublishedBookById(bookId: string, userId?: string) {
       include: {
         book: {
           include: {
-            user: { select: { id: true, name: true, avatarUrl: true, bio: true } },
+            user: { select: { id: true, name: true, avatarUrl: true, profilePhoto: true, bio: true } },
             chapters: {
               // Front and back matter are part of the book but are not chapters:
               // including them would make the title page the free preview.
@@ -93,7 +93,7 @@ async getPublishedBookById(bookId: string, userId?: string) {
         },
         reviews: {
           include: {
-            reviewer: { select: { id: true, name: true, avatarUrl: true } },
+            reviewer: { select: { id: true, name: true, avatarUrl: true, profilePhoto: true } },
           },
           orderBy: { createdAt: 'desc' },
           take: 10,
@@ -193,7 +193,7 @@ async getPublishedBookById(bookId: string, userId?: string) {
 
   async getActivityFeed(limit = 20) {
     return this.prisma.activityFeed.findMany({
-      include: { user: { select: { id: true, name: true, avatarUrl: true } } },
+      include: { user: { select: { id: true, name: true, avatarUrl: true, profilePhoto: true } } },
       orderBy: { createdAt: 'desc' },
       take: limit,
     });
@@ -203,7 +203,7 @@ async getPublishedBookById(bookId: string, userId?: string) {
     return this.prisma.user.findUnique({
       where: { id: writerId },
       select: {
-        id: true, name: true, avatarUrl: true, bio: true, createdAt: true,
+        id: true, name: true, avatarUrl: true, profilePhoto: true, bio: true, createdAt: true,
         books: {
           where: { published: { isPublic: true } },
           include: { published: true, chapters: { select: { id: true } } },
@@ -218,7 +218,7 @@ async getPublishedBookById(bookId: string, userId?: string) {
     return this.prisma.user.findMany({
       where: { books: { some: { published: { isPublic: true } } } },
       select: {
-        id: true, name: true, avatarUrl: true, bio: true,
+        id: true, name: true, avatarUrl: true, profilePhoto: true, bio: true,
         books: { where: { published: { isPublic: true } }, select: { id: true } },
         followers: true,
       },

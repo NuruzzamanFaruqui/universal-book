@@ -51,6 +51,7 @@ values override environment variables; blank falls back to env.
 │   │   ├── author-groups/  books/  groups/  marketplace/
 │   │   ├── payments/             # Stripe, credits, affiliates
 │   │   ├── social/  users/
+│   │   ├── storage/              # GCS uploads (profile photos)
 │   │   ├── prisma.module.ts      # @Global — one client for the process
 │   │   └── prisma.service.ts     # extends PrismaClient
 │   ├── prisma/schema.prisma
@@ -204,7 +205,7 @@ The seven student features, none of which have been started except where noted:
 
 | Feature | Student | Note |
 |---|---|---|
-| Profile photo upload | Madison Hem | `profilePhoto` is read everywhere, written nowhere. No upload endpoint. |
+| Profile photo upload | Madison Hem | **Built.** `POST /api/users/me/photo` → GCS (`storage/`), UI on `/account`, shared `<Avatar>` everywhere. Needs bucket IAM — see below. |
 | Connect button on profiles | Sandy Seng | Backend complete; the profile page never calls it. |
 | Book cover generation | Rohan Kannan | `coverUrl` exists, never set. |
 | PDF export | Shehara Hewawasam | The export page produces `.txt` and `.html` only. |
@@ -213,6 +214,14 @@ The seven student features, none of which have been started except where noted:
 | Recommendations | Dan Nguyen | Nothing. |
 
 Also absent: EPUB, table of contents, cover page design, SEO, Stripe Connect.
+
+**Profile photos** go to the Media bucket (`GCS_BUCKET`, default
+`universal-book-365.appspot.com`) under `profile-photos/<userId>/<uuid>.<ext>`.
+The Cloud Run service account needs Storage Object Admin on that bucket. With
+fine-grained ACLs each object is made public on upload; with uniform
+bucket-level access, grant `allUsers` Storage Object Viewer instead. Avatars
+render through `components/Avatar.tsx`; `lib/profile-photo.ts` pushes a new
+photo to every avatar on the page without a refetch.
 
 ---
 

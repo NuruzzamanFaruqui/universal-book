@@ -10,6 +10,7 @@ import { subscribeToChapter, leaveChapter } from '@/lib/realtime';
 import { POLL } from '@/lib/config';
 import { assist, AssistAction, ASSIST_LABELS } from '@/lib/writing-ai';
 import { DictationHandle, isSupported as dictationSupported, startDictation } from '@/lib/dictation';
+import Avatar from '@/components/Avatar';
 
 interface Props {
   bookId: string;
@@ -52,7 +53,7 @@ export default function ManuscriptEditor({
 }: Props) {
   const [saving, setSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
-  const [activeUsers, setActiveUsers] = useState<{ userId: string; name: string }[]>([]);
+  const [activeUsers, setActiveUsers] = useState<{ userId: string; name: string; avatarUrl?: string | null }[]>([]);
   const [busy, setBusy] = useState<AssistAction | null>(null);
   const [error, setError] = useState('');
 
@@ -454,10 +455,12 @@ export default function ManuscriptEditor({
           {activeUsers.length > 0 && (
             <div className="flex items-center gap-1 mr-2">
               {activeUsers.slice(0, 3).map(u => (
-                <div key={u.userId} title={u.name}
-                  className="w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center text-[10px] font-bold border-2 border-slate-700">
-                  {u.name?.[0]?.toUpperCase() || '?'}
-                </div>
+                <span key={u.userId} title={u.name} className="inline-flex">
+                  <Avatar
+                    user={{ id: u.userId, name: u.name, avatarUrl: u.avatarUrl }}
+                    className="w-6 h-6 text-[10px] border-2 border-slate-700"
+                  />
+                </span>
               ))}
               <span className="text-[11px] text-slate-400 ml-1">editing</span>
             </div>

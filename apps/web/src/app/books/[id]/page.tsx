@@ -12,6 +12,7 @@ import { ReadingProgressApi, type BookProgress } from '@/lib/reading-progress';
 import ReadingProgressBar from '@/components/reading/ReadingProgressBar';
 import MarkAsReadButton from '@/components/reading/MarkAsReadButton';
 import ChapterEndSentinel from '@/components/reading/ChapterEndSentinel';
+import Avatar from '@/components/Avatar';
 
 
 
@@ -534,9 +535,7 @@ export default function PublicBookPage() {
               <div className="mt-5 pt-4 border-t border-slate-700">
                 <p className="text-xs text-slate-500 mb-2">Written by</p>
                 <Link href={`/writers/${book.book?.user?.id}`} className="flex items-center gap-2 hover:opacity-80">
-                  <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-sm font-bold">
-                    {book.book?.user?.name?.[0]?.toUpperCase()}
-                  </div>
+                  <Avatar user={book.book?.user} className="w-8 h-8 text-sm shrink-0" />
                   <span className="text-sm text-slate-300">{book.book?.user?.name}</span>
                 </Link>
               </div>

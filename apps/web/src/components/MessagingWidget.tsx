@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { MessageCircle, X, Send, ChevronDown, Edit, Minus } from 'lucide-react';
 import { getToken, onAuthChange, getStoredToken } from '@/lib/auth';
 import { subscribeToMessages, subscribeToPresence, ChatMessage, Unsubscribe } from '@/lib/realtime';
+import Avatar from '@/components/Avatar';
 import { API_URL, POLL } from '@/lib/config';
 
 export default function MessagingWidget() {
@@ -221,9 +222,7 @@ export default function MessagingWidget() {
               onClick={() => toggleMinimize(chat.id)}>
               <div className="flex items-center gap-2">
                 <div className="relative">
-                  <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center font-bold text-white text-sm">
-                    {other?.name?.[0]?.toUpperCase() || '?'}
-                  </div>
+                  <Avatar user={other} className="w-8 h-8 text-sm" />
                   {online && <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 rounded-full border-2 border-white" />}
                 </div>
                 <div>
@@ -248,9 +247,7 @@ export default function MessagingWidget() {
                 <div className="flex-1 overflow-y-auto p-3 space-y-2 bg-white">
                   {chatMessages.length === 0 ? (
                     <div className="text-center py-8">
-                      <div className="w-16 h-16 rounded-full bg-blue-600 flex items-center justify-center text-2xl font-bold text-white mx-auto mb-2">
-                        {other?.name?.[0]?.toUpperCase() || '?'}
-                      </div>
+                      <Avatar user={other} className="w-16 h-16 text-2xl mx-auto mb-2" />
                       <p className="font-semibold text-gray-800 text-sm">{other?.name}</p>
                       <p className="text-gray-400 text-xs mt-1">Say hello! 👋</p>
                     </div>
@@ -260,9 +257,7 @@ export default function MessagingWidget() {
                       return (
                         <div key={msg.id || i} className={`flex items-end gap-1 ${isOwn ? 'flex-row-reverse' : ''}`}>
                           {!isOwn && (
-                            <div className="w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center text-xs font-bold text-white flex-shrink-0">
-                              {other?.name?.[0]?.toUpperCase() || '?'}
-                            </div>
+                            <Avatar user={other} className="w-6 h-6 text-xs flex-shrink-0" />
                           )}
                           <div className={`max-w-52 px-3 py-2 rounded-2xl text-sm ${
                             isOwn ? 'bg-blue-600 text-white rounded-br-sm' : 'bg-gray-100 text-gray-800 rounded-bl-sm'
@@ -317,9 +312,7 @@ export default function MessagingWidget() {
                   <button key={conv.id} onClick={() => { openChat(conv); setIsOpen(false); }}
                     className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 border-b border-gray-100">
                     <div className="relative flex-shrink-0">
-                      <div className="w-12 h-12 rounded-full bg-blue-600 flex items-center justify-center text-lg font-bold text-white">
-                        {other?.name?.[0]?.toUpperCase() || '?'}
-                      </div>
+                      <Avatar user={other} className="w-12 h-12 text-lg" />
                       {online && <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 rounded-full border-2 border-white" />}
                     </div>
                     <div className="flex-1 min-w-0 text-left">

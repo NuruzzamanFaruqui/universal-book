@@ -2,12 +2,18 @@
 import AppNav from '@/components/AppNav';
 export const dynamic = 'force-dynamic';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { BookOpen, ArrowLeft, User, Mail, Save, Zap, Shield } from 'lucide-react';
+import { User, Mail, Save, Zap, Shield, Camera, Check, X, Loader2 } from 'lucide-react';
 import { fetchMe, getToken as getFreshToken } from '@/lib/auth';
 import { API_URL } from '@/lib/config';
+import Avatar from '@/components/Avatar';
+import {
+  PROFILE_PHOTO_MAX_BYTES,
+  PROFILE_PHOTO_TYPES,
+  publishProfilePhoto,
+} from '@/lib/profile-photo';
 
 const ADMIN_EMAILS = ['faruqui.swe@diu.edu.bd', 'levin.kuhlmann@monash.edu'];
 
@@ -22,12 +28,96 @@ export default function AccountPage() {
   const [error, setError] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
 
+  // Profile photo: a picked file is previewed locally until confirmed.
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+
   useEffect(() => {
     const token = localStorage.getItem('ub_token');
     if (!token) { router.push('/auth/login'); return; }
     fetchUser();
     checkAdminStatus();
   }, []);
+
+  // Release the preview's object URL when it is replaced or the page unmounts.
+  useEffect(() => {
+    return () => {
+      if (photoPreview) URL.revokeObjectURL(photoPreview);
+    };
+  }, [photoPreview]);
+
+  const openPhotoPicker = () => {
+    if (uploadingPhoto) return;
+    fileInputRef.current?.click();
+  };
+
+  const handlePhotoSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    // Reset so choosing the same file again still fires onChange.
+    e.target.value = '';
+    if (!file) return;
+
+    setError('');
+    setSuccess('');
+    if (!PROFILE_PHOTO_TYPES.includes(file.type)) {
+      setError('Please choose a JPEG, PNG, WebP or GIF image.');
+      return;
+    }
+    if (file.size > PROFILE_PHOTO_MAX_BYTES) {
+      setError('Photo must be 5 MB or smaller.');
+      return;
+    }
+    setPhotoFile(file);
+    setPhotoPreview(URL.createObjectURL(file));
+  };
+
+  const cancelPhoto = () => {
+    setPhotoFile(null);
+    setPhotoPreview(null);
+  };
+
+  const confirmPhoto = async () => {
+    if (!photoFile) return;
+    setUploadingPhoto(true);
+    setError('');
+    setSuccess('');
+    try {
+      const token = await getFreshToken();
+      if (!token) { router.push('/auth/login'); return; }
+
+      const form = new FormData();
+      form.append('file', photoFile);
+      // No Content-Type header: the browser sets the multipart boundary.
+      const res = await fetch(`${API_URL}/api/users/me/photo`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: form,
+      });
+
+      if (!res.ok) {
+        let message = res.status === 413 ? 'Photo must be 5 MB or smaller.' : 'Failed to upload photo.';
+        try {
+          const body = await res.json();
+          if (res.status !== 413 && body?.message) {
+            message = Array.isArray(body.message) ? body.message[0] : body.message;
+          }
+        } catch { /* non-JSON error body */ }
+        throw new Error(message);
+      }
+
+      const { profilePhoto } = await res.json();
+      setUser((u: any) => (u ? { ...u, profilePhoto } : u));
+      if (user?.id) publishProfilePhoto(user.id, profilePhoto);
+      cancelPhoto();
+      setSuccess('Profile photo updated!');
+    } catch (err: any) {
+      setError(err.message || 'Failed to upload photo.');
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
 
   const checkAdminStatus = async () => {
     try {
@@ -116,13 +206,67 @@ export default function AccountPage() {
 
         {/* Profile Card */}
         <div className="bg-slate-800 border border-slate-700 rounded-xl p-8 mb-6">
-          <div className="flex items-center gap-4 mb-8">
-            <div className="w-16 h-16 rounded-full bg-blue-600 flex items-center justify-center text-2xl font-bold">
-              {user?.name?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || '?'}
+          <div className="flex items-center gap-5 mb-8">
+            <div className="flex flex-col items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={openPhotoPicker}
+                disabled={uploadingPhoto}
+                aria-label={user?.profilePhoto ? 'Change profile photo' : 'Add profile photo'}
+                title={user?.profilePhoto ? 'Change profile photo' : 'Add profile photo'}
+                className="group relative w-24 h-24 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-800 disabled:cursor-wait"
+              >
+                <Avatar
+                  user={user}
+                  src={photoPreview}
+                  className={`w-24 h-24 text-3xl ${photoPreview ? 'ring-2 ring-blue-500' : ''}`}
+                />
+                {/* Hover / focus overlay */}
+                <span className="absolute inset-0 rounded-full bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 transition-opacity">
+                  <Camera size={24} className="text-white" />
+                </span>
+                {/* Always-visible edit badge, so touch users can find it */}
+                <span className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-blue-600 border-2 border-slate-800 flex items-center justify-center shadow-md group-hover:bg-blue-500 transition-colors">
+                  {uploadingPhoto ? (
+                    <Loader2 size={14} className="text-white animate-spin" />
+                  ) : (
+                    <Camera size={14} className="text-white" />
+                  )}
+                </span>
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={PROFILE_PHOTO_TYPES.join(',')}
+                onChange={handlePhotoSelected}
+                className="hidden"
+              />
+              {photoPreview && (
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={confirmPhoto}
+                    disabled={uploadingPhoto}
+                    className="flex items-center gap-1 px-2.5 py-1 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded-md text-xs font-semibold transition"
+                  >
+                    {uploadingPhoto ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+                    {uploadingPhoto ? 'Saving' : 'Save'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={cancelPhoto}
+                    disabled={uploadingPhoto}
+                    aria-label="Cancel photo change"
+                    className="flex items-center px-2 py-1 border border-slate-600 hover:bg-slate-700 disabled:opacity-50 rounded-md text-xs text-slate-300 transition"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              )}
             </div>
-            <div>
-              <div className="font-bold text-lg">{user?.name || 'No name set'}</div>
-              <div className="text-slate-400 text-sm">{user?.email}</div>
+            <div className="min-w-0">
+              <div className="font-bold text-lg truncate">{user?.name || 'No name set'}</div>
+              <div className="text-slate-400 text-sm truncate">{user?.email}</div>
               <div className="flex items-center gap-2 mt-1">
                 <span className="text-xs px-2 py-0.5 bg-blue-900 text-blue-300 rounded-full">
                   {user?.plan || 'FREE'} Plan
@@ -133,6 +277,11 @@ export default function AccountPage() {
                   </span>
                 )}
               </div>
+              <p className="text-xs text-slate-500 mt-2">
+                {photoPreview
+                  ? 'Previewing your new photo — save to apply it.'
+                  : 'Click your photo to change it. JPEG, PNG, WebP or GIF, up to 5 MB.'}
+              </p>
             </div>
           </div>
           <form onSubmit={handleSave} className="space-y-4">

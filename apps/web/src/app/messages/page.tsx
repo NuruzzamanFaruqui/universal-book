@@ -8,6 +8,7 @@ import Link from 'next/link';
 import { Mail, ArrowLeft, Search } from 'lucide-react';
 import { getToken as getFreshToken } from '@/lib/auth';
 import { API_URL } from '@/lib/config';
+import Avatar from '@/components/Avatar';
 
 
 
@@ -91,9 +92,7 @@ export default function MessagesPage() {
                 return (
                   <button key={conn.id} onClick={() => startConversation(user?.id)}
                     className="flex flex-col items-center gap-1 flex-shrink-0">
-                    <div className="w-12 h-12 rounded-full bg-blue-600 flex items-center justify-center text-lg font-bold border-2 border-slate-700 hover:border-blue-500 transition">
-                      {user?.name?.[0] || '?'}
-                    </div>
+                    <Avatar user={user} className="w-12 h-12 text-lg border-2 border-slate-700 hover:border-blue-500 transition" />
                     <span className="text-xs text-slate-400 truncate w-14 text-center">{user?.name?.split(' ')[0]}</span>
                   </button>
                 );
@@ -122,9 +121,7 @@ export default function MessagesPage() {
               return (
                 <Link key={conv.id} href={`/messages/${conv.id}`}
                   className="flex items-center gap-3 p-4 bg-slate-800 border border-slate-700 hover:border-blue-500 rounded-xl transition">
-                  <div className="w-12 h-12 rounded-full bg-blue-600 flex items-center justify-center text-lg font-bold flex-shrink-0">
-                    {other?.name?.[0] || '?'}
-                  </div>
+                  <Avatar user={other} className="w-12 h-12 text-lg flex-shrink-0" />
                   <div className="flex-1 min-w-0">
                     <div className="font-semibold text-sm">{other?.name}</div>
                     <div className="text-slate-400 text-xs truncate">

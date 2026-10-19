@@ -8,6 +8,7 @@ import Link from 'next/link';
 import { BookOpen, ArrowLeft, Users, Heart, MessageCircle, Repeat2 } from 'lucide-react';
 import { getToken as getFreshToken } from '@/lib/auth';
 import { API_URL } from '@/lib/config';
+import Avatar from '@/components/Avatar';
 
 
 
@@ -109,9 +110,7 @@ export default function ProfilePage() {
         {/* Profile Header */}
         <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 mb-6">
           <div className="flex items-start justify-between mb-4">
-            <div className="w-20 h-20 rounded-full bg-blue-600 flex items-center justify-center text-3xl font-bold">
-              {profile.name?.[0] || '?'}
-            </div>
+            <Avatar user={profile} className="w-20 h-20 text-3xl shrink-0" />
             {!isOwnProfile && (
               <div className="flex gap-2">
                 <button onClick={handleMessage}

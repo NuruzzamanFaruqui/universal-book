@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { BookOpen, Users, Search } from 'lucide-react';
 import { API_URL } from '@/lib/config';
+import Avatar from '@/components/Avatar';
 
 
 export default function WritersPage() {
@@ -63,9 +64,7 @@ export default function WritersPage() {
               <Link key={writer.id} href={`/writers/${writer.id}`}
                 className="bg-slate-800 border border-slate-700 hover:border-blue-500 rounded-xl p-6 transition block">
                 <div className="flex items-center gap-4 mb-4">
-                  <div className="w-14 h-14 rounded-full bg-blue-600 flex items-center justify-center text-2xl font-bold flex-shrink-0">
-                    {writer.name?.[0] || '?'}
-                  </div>
+                  <Avatar user={writer} className="w-14 h-14 text-2xl flex-shrink-0" />
                   <div>
                     <div className="font-bold text-lg">{writer.name}</div>
                     <div className="text-slate-400 text-sm">{writer.followers?.length || 0} followers</div>

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { BookOpen, ChevronDown, LogOut, Settings, LayoutDashboard } from 'lucide-react';
 import { getToken, logout, onAuthChange } from '@/lib/auth';
 import { API_URL } from '@/lib/config';
+import Avatar from '@/components/Avatar';
 
 export default function MarketingNav() {
   const router = useRouter();
@@ -91,9 +92,7 @@ export default function MarketingNav() {
                   onClick={() => setShowDropdown(!showDropdown)}
                   className="flex items-center gap-2 hover:bg-slate-800 p-1.5 rounded-lg transition"
                 >
-                  <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-sm font-bold text-white">
-                    {user?.name?.[0]?.toUpperCase() || '?'}
-                  </div>
+                  <Avatar user={user} className="w-8 h-8 text-sm" />
                   <span className="hidden sm:block text-sm text-slate-300">{user?.name?.split(' ')[0]}</span>
                   <ChevronDown size={14} className="text-slate-400" />
                 </button>

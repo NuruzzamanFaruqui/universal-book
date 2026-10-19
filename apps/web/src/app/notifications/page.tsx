@@ -10,6 +10,7 @@ import { getToken as getFreshToken } from '@/lib/auth';
 import { API_URL } from '@/lib/config';
 import { notificationHref } from '@/lib/notifications';
 import { Repeat2, Mail } from 'lucide-react';
+import Avatar from '@/components/Avatar';
 
 
 
@@ -81,9 +82,7 @@ export default function NotificationsPage() {
             <div className="space-y-3">
               {pendingRequests.map((req: any) => (
                 <div key={req.id} className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center font-bold flex-shrink-0">
-                    {req.sender?.name?.[0] || '?'}
-                  </div>
+                  <Avatar user={req.sender} className="w-10 h-10 flex-shrink-0" />
                   <div className="flex-1 min-w-0">
                     <Link href={`/profile/${req.sender?.id}`} className="font-semibold text-sm hover:text-blue-400">
                       {req.sender?.name}

@@ -10,6 +10,7 @@ import {
   onAuthChange,
 } from '@/lib/auth';
 import { API_URL, HEARTBEAT_MS } from '@/lib/config';
+import { onProfilePhotoChange } from '@/lib/profile-photo';
 
 interface AuthContextType {
   user: AuthUser | null;
@@ -63,6 +64,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       unsubscribe();
     };
   }, [load]);
+
+  // Keep the cached user's photo current after an upload on /account.
+  useEffect(() => {
+    return onProfilePhotoChange((userId, url) => {
+      setUser((u) => (u && u.id === userId ? { ...u, profilePhoto: url } : u));
+    });
+  }, []);
 
   // Presence heartbeat. Pauses on a hidden tab, so a forgotten background tab
   // doesn't keep someone showing as online for hours.

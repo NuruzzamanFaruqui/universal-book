@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { Search, RefreshCw, Users, BookOpen } from 'lucide-react';
 import { getToken as getFreshToken } from '@/lib/auth';
 import { API_URL } from '@/lib/config';
+import Avatar from '@/components/Avatar';
 
 
 
@@ -110,9 +111,7 @@ export default function AdminUsersPage() {
                 <tr key={i} className="border-b border-gray-800 hover:bg-gray-800/50 transition">
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-sm font-bold flex-shrink-0">
-                        {user.name?.[0] || user.email?.[0] || '?'}
-                      </div>
+                      <Avatar user={user} className="w-8 h-8 text-sm flex-shrink-0" />
                       <div>
                         <div className="text-sm font-medium">{user.name || 'No name'}</div>
                         <div className="text-xs text-gray-400">{user.email}</div>
