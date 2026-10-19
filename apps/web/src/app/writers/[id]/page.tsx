@@ -5,6 +5,7 @@ export const dynamic = 'force-dynamic';
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import BookCover from '@/components/covers/BookCover';
 import { BookOpen, ArrowLeft, Users, Heart } from 'lucide-react';
 import { getToken as getFreshToken } from '@/lib/auth';
 import { API_URL } from '@/lib/config';
@@ -143,13 +144,11 @@ export default function WriterProfilePage() {
             <p className="text-slate-400">No published books yet</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
             {publishedBooks?.map((book: any) => (
               <Link key={book.id} href={`/books/${book.id}`}
-                className="bg-slate-800 border border-slate-700 hover:border-blue-500 rounded-xl p-5 transition block">
-                <div className="w-10 h-10 bg-blue-900/50 rounded-lg flex items-center justify-center mb-3">
-                  <BookOpen className="text-blue-400" size={18} />
-                </div>
+                className="bg-slate-800 border border-slate-700 hover:border-blue-500 rounded-xl p-3 sm:p-4 transition block min-w-0">
+                <BookCover url={book.coverUrl} title={book.title} className="w-full rounded-lg mb-3" />
                 <h3 className="font-bold mb-1 line-clamp-2">{book.title}</h3>
                 {book.subtitle && <p className="text-slate-400 text-xs mb-2 line-clamp-1">{book.subtitle}</p>}
                 <div className="flex items-center justify-between mt-3">

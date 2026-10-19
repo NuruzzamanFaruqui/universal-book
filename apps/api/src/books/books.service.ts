@@ -3,6 +3,10 @@ import { PrismaService } from '../prisma.service';
 import { AiService } from '../ai/ai.service';
 import { PaymentsService } from '../payments/payments.service';
 import { PRESENCE_WINDOW_MS } from '../users/users.service';
+import { StorageService } from '../storage/storage.service';
+
+export const MAX_COVER_BYTES = 2 * 1024 * 1024;
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 const strip = (html: string | null | undefined) =>
   (html || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
@@ -72,6 +76,7 @@ export class BooksService {
     private prisma: PrismaService,
     private aiService: AiService,
     private paymentsService: PaymentsService,
+    private storage: StorageService,
   ) {}
 
   async getAllBooks(userId: string) {
@@ -615,9 +620,20 @@ export class BooksService {
     title?: string; subtitle?: string; genre?: string; tone?: string;
     audience?: string; synopsis?: string;
     numbering?: 'NONE' | 'DECIMAL'; sectionDepth?: number;
+    coverUrl?: string | null;
   }) {
     const book = await this.prisma.book.findFirst({ where: this.editableWhere(bookId, userId) });
     if (!book) throw new NotFoundException('Book not found');
+
+    // A cover must be one this API stored for this book (POST /books/:id/cover),
+    // never an arbitrary link — it renders on public pages. '' or null removes it.
+    let coverUrl: string | null | undefined;
+    if (data.coverUrl !== undefined) {
+      coverUrl = data.coverUrl ? String(data.coverUrl) : null;
+      if (coverUrl && !(await this.storage.isOwnUrl(coverUrl, `covers/${bookId}/`))) {
+        throw new BadRequestException('coverUrl must come from the cover upload endpoint');
+      }
+    }
 
     return this.prisma.book.update({
       where: { id: bookId },
@@ -632,8 +648,40 @@ export class BooksService {
         ...(data.sectionDepth !== undefined && {
           sectionDepth: Math.min(3, Math.max(0, data.sectionDepth)),
         }),
+        ...(coverUrl !== undefined && { coverUrl }),
       },
+    }).then(async (updated) => {
+      // The old image is no longer referenced anywhere once replaced.
+      if (coverUrl !== undefined && book.coverUrl && book.coverUrl !== coverUrl) {
+        await this.storage.remove(book.coverUrl);
+      }
+      return updated;
     });
+  }
+
+  /**
+   * Stores a generated cover image and returns its public URL. Does not change
+   * the book — the client saves the URL with PUT /books/:id, so "upload" and
+   * "use as cover" stay separate, as the task spec asks.
+   */
+  async uploadCover(
+    bookId: string,
+    userId: string,
+    file: { buffer: Buffer; size: number } | undefined,
+    origin: string,
+  ) {
+    const book = await this.prisma.book.findFirst({ where: this.editableWhere(bookId, userId), select: { id: true } });
+    if (!book) throw new NotFoundException('Book not found');
+
+    if (!file?.buffer?.length) throw new BadRequestException('No image received');
+    if (file.size > MAX_COVER_BYTES) throw new BadRequestException('Cover image must be under 2 MB');
+    // Trust the bytes, not the client's Content-Type: a PNG always starts with this signature.
+    if (!file.buffer.subarray(0, 8).equals(PNG_SIGNATURE)) {
+      throw new BadRequestException('Cover must be a PNG image');
+    }
+
+    const url = await this.storage.uploadPng(`covers/${bookId}/${Date.now()}.png`, file.buffer, origin);
+    return { url };
   }
 
   /** Everything the author never had to fill in, read back out of the writing. */

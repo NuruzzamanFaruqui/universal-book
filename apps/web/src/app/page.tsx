@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic';
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import BookCover from '@/components/covers/BookCover';
 import { BookOpen, Search, Star, TrendingUp, ArrowRight, ChevronRight, LogOut, User, Bell, PenSquare } from 'lucide-react';
 import { getToken as getFreshToken, logout, onAuthChange } from '@/lib/auth';
 import { API_URL } from '@/lib/config';
@@ -299,9 +300,8 @@ function BookCard({ pb, getAvgRating }: any) {
     <Link href={`/books/${pb.bookId}`}
       className="bg-slate-800 border border-slate-700 hover:border-blue-500 rounded-xl overflow-hidden transition group">
       {/* Book Cover */}
-      <div className="aspect-[3/4] bg-gradient-to-br from-blue-900 to-slate-800 flex items-center justify-center p-4">
-        <BookOpen className="text-blue-400 opacity-50 group-hover:opacity-80 transition" size={40} />
-      </div>
+      <BookCover url={pb.book?.coverUrl} title={pb.book?.title} iconSize={40}
+        className="w-full group-hover:opacity-90 transition" />
       {/* Book Info */}
       <div className="p-3">
         <h3 className="font-bold text-xs line-clamp-2 mb-1 leading-tight">{pb.book?.title}</h3>

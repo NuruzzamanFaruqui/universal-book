@@ -1,8 +1,10 @@
 import {
   Controller, Get, Post, Put, Delete,
   Body, Param, Query, Request, UseGuards, NotFoundException,
+  UploadedFile, UseInterceptors,
 } from '@nestjs/common';
-import { BooksService } from './books.service';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { BooksService, MAX_COVER_BYTES } from './books.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AiService } from '../ai/ai.service';
 import { Throttle } from '@nestjs/throttler';
@@ -114,10 +116,31 @@ export class BooksController {
   @Put(':bookId')
   async updateBook(
     @Param('bookId') bookId: string,
-    @Body() body: { title?: string; subtitle?: string; genre?: string; tone?: string; audience?: string; synopsis?: string },
+    @Body() body: { title?: string; subtitle?: string; genre?: string; tone?: string; audience?: string; synopsis?: string; coverUrl?: string | null },
     @Request() req: any,
   ) {
     return this.booksService.updateBook(bookId, req.user.id, body);
+  }
+
+  /**
+   * Upload a cover PNG rendered by the web app's canvas generator. Multipart,
+   * field "file". Returns { url }; the client then saves it with PUT above.
+   * Multer stops reading at the size limit, so an oversized body is cut off
+   * rather than buffered.
+   */
+  @Post(':bookId/cover')
+  @Throttle({ default: { ttl: 60_000, limit: 20 } })
+  // No storage/dest option means multer keeps the file in memory (file.buffer).
+  @UseInterceptors(FileInterceptor('file', {
+    limits: { fileSize: MAX_COVER_BYTES, files: 1 },
+  }))
+  async uploadCover(
+    @Param('bookId') bookId: string,
+    @UploadedFile() file: { buffer: Buffer; size: number } | undefined,
+    @Request() req: any,
+  ) {
+    const origin = `${req.protocol}://${req.get('host')}`;
+    return this.booksService.uploadCover(bookId, req.user.id, file, origin);
   }
 
   /** The Contents, derived from the manuscript on every read. */

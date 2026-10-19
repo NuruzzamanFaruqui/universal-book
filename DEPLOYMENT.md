@@ -59,6 +59,29 @@ the container log instead of being sent.
 > generally needs a Serverless VPC connector with Cloud NAT. Resend uses plain
 > HTTPS and avoids that.
 
+### Book cover storage
+
+Generated covers are uploaded to the bucket named by `GCS_BUCKET` (Admin → API
+Management, or the env var). One-time setup, in project `universal-book-365`:
+
+```bash
+gcloud storage buckets create gs://universal-book-media --location=us-central1 --uniform-bucket-level-access
+# Covers appear on public pages, so objects must be readable by anyone
+gcloud storage buckets add-iam-policy-binding gs://universal-book-media \
+  --member=allUsers --role=roles/storage.objectViewer
+# Let the API's Cloud Run service account write and delete objects
+gcloud storage buckets add-iam-policy-binding gs://universal-book-media \
+  --member=serviceAccount:$(gcloud run services describe universal-book-api --region us-central1 \
+    --format='value(spec.template.spec.serviceAccountName)') \
+  --role=roles/storage.objectAdmin
+```
+
+If the describe command prints nothing, the service uses the default compute
+service account, `PROJECT_NUMBER-compute@developer.gserviceaccount.com`.
+
+Without `GCS_BUCKET`, a production API answers cover uploads with 503. Locally
+it writes to `apps/api/uploads/` instead and serves those files at `/uploads`.
+
 ---
 
 ## Deploying

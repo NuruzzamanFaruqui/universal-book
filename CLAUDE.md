@@ -206,7 +206,7 @@ The seven student features, none of which have been started except where noted:
 |---|---|---|
 | Profile photo upload | Madison Hem | `profilePhoto` is read everywhere, written nowhere. No upload endpoint. |
 | Connect button on profiles | Sandy Seng | Backend complete; the profile page never calls it. |
-| Book cover generation | Rohan Kannan | `coverUrl` exists, never set. |
+| Book cover generation | Rohan Kannan | Built: canvas generator on `/dashboard/books/[id]`, `POST /api/books/:id/cover` → GCS (`GCS_BUCKET`), shown via `components/covers/BookCover`. |
 | PDF export | Shehara Hewawasam | The export page produces `.txt` and `.html` only. |
 | Reading progress | Luka Boskovic | No model. |
 | Email notifications | Ankush | `EmailService` exists with one caller (password reset). Needs triggers. |

@@ -1,6 +1,8 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
+import { NestExpressApplication } from '@nestjs/platform-express';
+import { LOCAL_UPLOAD_DIR, LOCAL_UPLOAD_PREFIX } from './storage/storage.service';
 
 function assertRequiredEnv() {
   // A missing JWT_SECRET in production would silently fall back to the dev
@@ -18,7 +20,13 @@ function assertRequiredEnv() {
 async function bootstrap() {
   assertRequiredEnv();
 
-  const app = await NestFactory.create(AppModule, { rawBody: true });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true });
+
+  // Local development only: StorageService falls back to disk when GCS_BUCKET
+  // is unset, and these are the files it wrote. Production always uses GCS.
+  if (process.env.NODE_ENV !== 'production') {
+    app.useStaticAssets(LOCAL_UPLOAD_DIR, { prefix: LOCAL_UPLOAD_PREFIX });
+  }
 
   app.enableCors({
     origin: [
