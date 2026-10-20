@@ -26,7 +26,7 @@ Three ways to create a book: **AI Author** ($5 in credits, Claude writes it),
 **Frontend** — Next.js 14 App Router, TypeScript, Tailwind, lucide-react.
 
 **Backend** — NestJS, Prisma 7 (PrismaPg adapter), PostgreSQL on Cloud SQL,
-Anthropic SDK, Stripe, bcryptjs, nodemailer/Resend.
+Anthropic SDK, Stripe, bcryptjs, SendGrid / nodemailer (SMTP) / Resend.
 
 **Infra** — Cloud Run, GCP project `universal-book-365`, region `us-central1`,
 Namecheap DNS.
@@ -47,7 +47,7 @@ values override environment variables; blank falls back to env.
 │   │   ├── admin/                # CRUD, platform settings, revenue, featuring
 │   │   ├── ai/                   # Claude service
 │   │   ├── auth/                 # JWT issuer, guards, DTOs
-│   │   ├── email/                # SMTP or Resend, console fallback
+│   │   ├── email/                # SendGrid, SMTP or Resend, console fallback
 │   │   ├── author-groups/  books/  groups/  marketplace/
 │   │   ├── payments/             # Stripe, credits, affiliates
 │   │   ├── social/  users/
@@ -191,7 +191,9 @@ DM reads verify participation. The auth guard shares one Prisma client.
 ### Other
 - AI model defaults to `claude-sonnet-4-20250514`, superseded by the Claude 5
   family. Override it in Admin → API Management without a deploy.
-- No automated tests. The 19 `.spec.ts` files are unmodified scaffolding.
+- Almost no automated tests. `email/email.service.spec.ts` is real; the other
+  `.spec.ts` files are unmodified scaffolding and fail (no PrismaService provider).
+- Notification emails have no opt-out or List-Unsubscribe header.
 - `TeamMember` has no table; the admin team page is `useState` only.
 - `books/[id]/page.tsx` is `'use client'`, so no per-book SEO metadata is
   possible without a server-component wrapper.
@@ -209,7 +211,7 @@ The seven student features, none of which have been started except where noted:
 | Book cover generation | Rohan Kannan | `coverUrl` exists, never set. |
 | PDF export | Shehara Hewawasam | The export page produces `.txt` and `.html` only. |
 | Reading progress | Luka Boskovic | No model. |
-| Email notifications | Ankush | `EmailService` exists with one caller (password reset). Needs triggers. |
+| Email notifications | Ankush | **Built.** Connection request/accepted, purchase receipt, sale, new follower (≤1/day per pair). Sent after commit, never throws. No opt-out yet. |
 | Recommendations | Dan Nguyen | Nothing. |
 
 Also absent: EPUB, table of contents, cover page design, SEO, Stripe Connect.

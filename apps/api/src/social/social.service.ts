@@ -1,9 +1,15 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
+import { EmailService } from '../email/email.service';
 
 @Injectable()
 export class SocialService {
-  constructor(private prisma: PrismaService) {}
+  private readonly logger = new Logger(SocialService.name);
+
+  constructor(
+    private prisma: PrismaService,
+    private email: EmailService,
+  ) {}
 
   async createPost(userId: string, content: string, bookId?: string, hashtags?: string[]) {
     const post = await this.prisma.post.create({
@@ -192,6 +198,16 @@ export class SocialService {
     await this.prisma.notification.create({
       data: { userId: receiverId, type: 'CONNECTION_REQUEST', message: 'sent you a connection request', linkId: senderId },
     });
+
+    await this.notifyByEmail('connection request', async () => {
+      const { [senderId]: sender, [receiverId]: receiver } = await this.contacts(senderId, receiverId);
+      if (!receiver) return;
+      await this.email.sendConnectionRequest({
+        to: receiver.email,
+        recipientName: receiver.name,
+        senderName: sender?.name ?? null,
+      });
+    });
     return connection;
   }
 
@@ -204,12 +220,50 @@ export class SocialService {
       where: { id: connectionId },
       data: { status },
     });
-    if (status === 'ACCEPTED') {
+    // Only a pending request can be newly accepted; responding again to one
+    // already accepted must not notify the sender a second time.
+    if (status === 'ACCEPTED' && connection.status === 'PENDING') {
       await this.prisma.notification.create({
         data: { userId: connection.senderId, type: 'CONNECTION_ACCEPTED', message: 'accepted your connection request', linkId: userId },
       });
+
+      await this.notifyByEmail('connection accepted', async () => {
+        const { [connection.senderId]: sender, [userId]: accepter } = await this.contacts(connection.senderId, userId);
+        if (!sender) return;
+        await this.email.sendConnectionAccepted({
+          to: sender.email,
+          recipientName: sender.name,
+          accepterName: accepter?.name ?? null,
+          accepterId: userId,
+        });
+      });
     }
     return updated;
+  }
+
+  /**
+   * Runs after the change is saved. Awaited rather than fire-and-forget because
+   * Cloud Run throttles CPU once the response is sent; caught so that a failed
+   * lookup or send can never turn a saved action into an error response.
+   */
+  private async notifyByEmail(what: string, send: () => Promise<void>) {
+    try {
+      await send();
+    } catch (err: any) {
+      this.logger.error(`Could not email ${what}: ${err?.message ?? err}`);
+    }
+  }
+
+  /** Name and address for each user, keyed by id, for notification emails. */
+  private async contacts(...ids: string[]) {
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, name: true, email: true },
+    });
+    return Object.fromEntries(users.map((u) => [u.id, u])) as Record<
+      string,
+      { id: string; name: string | null; email: string } | undefined
+    >;
   }
 
   async removeConnection(userId: string, connectionId: string) {

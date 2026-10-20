@@ -3,6 +3,7 @@ import { CreditTransactionType, Prisma } from '@prisma/client';
 import Stripe from 'stripe';
 import { PrismaService } from '../prisma.service';
 import { RuntimeConfigService } from '../config/runtime-config.service';
+import { EmailService } from '../email/email.service';
 import { randomBytes } from 'crypto';
 
 /** Money is stored as Float; round every derived figure to cents. */
@@ -26,6 +27,7 @@ export class PaymentsService {
   constructor(
     private prisma: PrismaService,
     private config: RuntimeConfigService,
+    private email: EmailService,
   ) {}
 
   // ─── Stripe Instance ──────────────────────────────────────────────────────
@@ -272,7 +274,7 @@ export class PaymentsService {
 
     if (!(price >= 0)) throw new BadRequestException('Invalid price.');
 
-    return this.prisma.$transaction(async (tx) => {
+    const purchase = await this.prisma.$transaction(async (tx) => {
       const published = await tx.publishedBook.findUnique({
         where: { bookId },
         include: { book: { select: { userId: true, title: true } } },
@@ -352,6 +354,60 @@ export class PaymentsService {
 
       return purchase;
     });
+
+    // Only after commit: sending from inside the transaction could announce a
+    // purchase that then rolls back. Webhook retries never reach this twice —
+    // ProcessedWebhookEvent turns the duplicate away first.
+    await this.notifyPurchase(purchase.id);
+    return purchase;
+  }
+
+  /**
+   * Receipt to the buyer, sale notice to the author. Never throws: the purchase
+   * is already committed, and an error here would make Stripe retry a webhook
+   * that has in fact succeeded.
+   */
+  private async notifyPurchase(purchaseId: string) {
+    try {
+      const purchase = await this.prisma.bookPurchase.findUnique({
+        where: { id: purchaseId },
+        select: {
+          amount: true,
+          writerEarning: true,
+          paymentMethod: true,
+          buyer: { select: { name: true, email: true } },
+          publishedBook: {
+            select: { book: { select: { title: true, user: { select: { name: true, email: true } } } } },
+          },
+        },
+      });
+      if (!purchase) return;
+
+      const { buyer, amount, writerEarning } = purchase;
+      const { title, user: author } = purchase.publishedBook.book;
+
+      await Promise.all([
+        this.email.sendBookPurchased({
+          to: buyer.email,
+          recipientName: buyer.name,
+          bookTitle: title,
+          authorName: author.name,
+          amount,
+          paymentMethod: purchase.paymentMethod === 'card' ? 'card' : 'credits',
+        }),
+        // A free book earns nothing, so there is no sale to announce.
+        writerEarning > 0
+          ? this.email.sendBookSold({
+              to: author.email,
+              recipientName: author.name,
+              bookTitle: title,
+              earning: writerEarning,
+            })
+          : Promise.resolve(false),
+      ]);
+    } catch (err: any) {
+      this.logger.error(`Could not email purchase ${purchaseId}: ${err?.message ?? err}`);
+    }
   }
 
   // ─── Deduct Credits for AI Book Generation ────────────────────────────────

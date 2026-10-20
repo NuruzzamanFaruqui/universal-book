@@ -23,7 +23,7 @@ const GROUPS: { id: ManagedKey['group']; title: string; blurb: string }[] = [
   { id: 'ai', title: 'Anthropic', blurb: 'Book generation, writing assistance and diagrams.' },
   { id: 'google', title: 'Google Cloud', blurb: 'Imagen and Veo run in this project. Access uses the Cloud Run service account — there is no key to paste.' },
   { id: 'stripe', title: 'Stripe', blurb: 'Credit top-ups and book purchases.' },
-  { id: 'email', title: 'Email', blurb: 'Password reset. Use SMTP for a mailbox you already own, or Resend over HTTPS.' },
+  { id: 'email', title: 'Email', blurb: 'Password reset and notification emails. SendGrid wins when set, then SMTP, then Resend.' },
 ];
 
 export default function ApiManagementPage() {

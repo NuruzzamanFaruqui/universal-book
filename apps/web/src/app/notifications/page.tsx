@@ -16,6 +16,7 @@ const notifIcons: any = {
   POST_COMMENT: <MessageCircle size={16} className="text-blue-400" />,
   CONNECTION_REQUEST: <UserPlus size={16} className="text-green-400" />,
   CONNECTION_ACCEPTED: <Users size={16} className="text-purple-400" />,
+  NEW_FOLLOWER: <UserPlus size={16} className="text-blue-400" />,
   BOOK_PUBLISHED: <BookOpen size={16} className="text-yellow-400" />,
 };
 

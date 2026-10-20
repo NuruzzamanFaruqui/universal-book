@@ -1,9 +1,17 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
+import { EmailService } from '../email/email.service';
+
+const FOLLOW_NOTIFY_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 @Injectable()
 export class MarketplaceService {
-  constructor(private prisma: PrismaService) {}
+  private readonly logger = new Logger(MarketplaceService.name);
+
+  constructor(
+    private prisma: PrismaService,
+    private email: EmailService,
+  ) {}
 
   async getPublishedBooks(genre?: string, search?: string, page = 1, limit = 12) {
     const skip = (page - 1) * limit;
@@ -175,7 +183,48 @@ async getPublishedBookById(bookId: string, userId?: string) {
       return { following: false };
     }
     await this.prisma.writerFollow.create({ data: { followerId, writerId } });
+    await this.notifyNewFollower(followerId, writerId);
     return { following: true };
+  }
+
+  /**
+   * In-app notification plus email, at most once per follower per day — the
+   * endpoint toggles, so follow/unfollow/follow would otherwise mail every time.
+   * Never throws: the follow is already saved.
+   */
+  private async notifyNewFollower(followerId: string, writerId: string) {
+    if (followerId === writerId) return;
+    try {
+      const recent = await this.prisma.notification.findFirst({
+        where: {
+          userId: writerId,
+          type: 'NEW_FOLLOWER',
+          linkId: followerId,
+          createdAt: { gte: new Date(Date.now() - FOLLOW_NOTIFY_WINDOW_MS) },
+        },
+        select: { id: true },
+      });
+      if (recent) return;
+
+      await this.prisma.notification.create({
+        data: { userId: writerId, type: 'NEW_FOLLOWER', message: 'started following you', linkId: followerId },
+      });
+
+      const [writer, follower] = await Promise.all([
+        this.prisma.user.findUnique({ where: { id: writerId }, select: { name: true, email: true } }),
+        this.prisma.user.findUnique({ where: { id: followerId }, select: { name: true } }),
+      ]);
+      if (!writer) return;
+
+      await this.email.sendNewFollower({
+        to: writer.email,
+        recipientName: writer.name,
+        followerName: follower?.name ?? null,
+        followerId,
+      });
+    } catch (err: any) {
+      this.logger.error(`Could not notify ${writerId} of follower ${followerId}: ${err?.message ?? err}`);
+    }
   }
 
   async getActivityFeed(limit = 20) {
