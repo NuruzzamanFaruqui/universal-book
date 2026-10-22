@@ -64,7 +64,8 @@ export class UsersController {
     if (!file?.buffer?.length) {
       throw new BadRequestException('Attach an image in the "file" field.');
     }
-    const profilePhoto = await this.usersService.setProfilePhoto(req.user.id, file.buffer);
+    const origin = `${req.protocol}://${req.get('host')}`;
+    const profilePhoto = await this.usersService.setProfilePhoto(req.user.id, file.buffer, origin);
     return { profilePhoto };
   }
 

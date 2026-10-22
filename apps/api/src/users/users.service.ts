@@ -84,11 +84,12 @@ export class UsersService {
   // ─── Profile photo ────────────────────────────────────────────────────────
 
   /**
-   * Stores `image` in Cloud Storage under a fresh object name, points the
-   * user's `profilePhoto` at it, then removes the photo it replaced. Returns
-   * the new public URL.
+   * Stores `image` in Cloud Storage (or, in local development with no bucket
+   * set, on disk) under a fresh object name, points the user's `profilePhoto`
+   * at it, then removes the photo it replaced. Returns the new public URL.
+   * @param localOrigin origin of this API, used only for the local-disk fallback
    */
-  async setProfilePhoto(userId: string, image: Buffer): Promise<string> {
+  async setProfilePhoto(userId: string, image: Buffer, localOrigin: string): Promise<string> {
     const type = sniffImage(image);
     if (!type) {
       throw new BadRequestException('Unsupported image. Use a JPEG, PNG, WebP or GIF file.');
@@ -97,7 +98,7 @@ export class UsersService {
     // A new name per upload, so the immutable cache header never serves a
     // stale photo and the old URL keeps working until the swap below.
     const objectPath = `${PROFILE_PHOTO_PREFIX}${userId}/${randomUUID()}.${type.ext}`;
-    const url = await this.storage.uploadPublic(objectPath, image, type.contentType);
+    const url = await this.storage.uploadPublic(objectPath, image, type.contentType, localOrigin);
 
     const previous = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -109,7 +110,7 @@ export class UsersService {
       data: { profilePhoto: url },
     });
 
-    // Only ever deletes from this user's own folder in our bucket.
+    // Only ever deletes from this user's own folder (in our bucket or local uploads).
     await this.storage.deleteByUrl(previous?.profilePhoto, `${PROFILE_PHOTO_PREFIX}${userId}/`);
 
     return url;

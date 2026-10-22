@@ -4,5 +4,5 @@ node_modules
 
 /generated/prisma
 
-# Local cover uploads (StorageService disk fallback)
+# Local uploads: covers and profile photos (StorageService disk fallback)
 /uploads
