@@ -34,6 +34,8 @@ ENV NODE_ENV=production
 
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
+# standalone output leaves public/ out; it holds the PDF export's fonts.
+COPY --from=builder /app/public ./public
 
 EXPOSE 3000
 

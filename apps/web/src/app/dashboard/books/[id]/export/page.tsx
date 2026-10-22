@@ -8,6 +8,7 @@ import { ArrowLeft, Download, FileText, BookOpen, File } from 'lucide-react';
 import Link from 'next/link';
 import { getToken as getFreshToken } from '@/lib/auth';
 import { API_URL } from '@/lib/config';
+import { exportBookPdf } from '@/lib/pdf-export';
 
 
 
@@ -119,6 +120,23 @@ export default function ExportPage() {
     }
   };
 
+  const exportAsPdf = async () => {
+    setExporting('pdf');
+    setError('');
+    try {
+      const token = await getFreshToken();
+      const res = await fetch(`${API_URL}/api/books/${bookId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error('Failed to load book');
+      await exportBookPdf(await res.json());
+    } catch (err: any) {
+      setError('Export as PDF failed. Please try again.');
+    } finally {
+      setExporting('');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-900 text-white">
       <AppNav />
@@ -158,15 +176,19 @@ export default function ExportPage() {
             <Download size={20} className="text-slate-400" />
           </button>
 
-          <div className="w-full flex items-center justify-between p-6 bg-slate-800/50 border border-slate-700 rounded-xl opacity-50">
+          <button onClick={exportAsPdf} disabled={exporting === 'pdf'}
+            className="w-full flex items-center justify-between p-6 bg-slate-800 border border-slate-700 hover:border-blue-500 rounded-xl transition disabled:opacity-50">
             <div className="flex items-center gap-4">
               <File className="text-red-400" size={32} />
               <div className="text-left">
                 <div className="font-bold text-lg">Export as PDF</div>
-                <div className="text-slate-400 text-sm">Coming soon</div>
+                <div className="text-slate-400 text-sm">
+                  {exporting === 'pdf' ? 'Building your PDF…' : 'Print-ready book with cover and contents'}
+                </div>
               </div>
             </div>
-          </div>
+            <Download size={20} className="text-slate-400" />
+          </button>
         </div>
       </div>
     </div>
