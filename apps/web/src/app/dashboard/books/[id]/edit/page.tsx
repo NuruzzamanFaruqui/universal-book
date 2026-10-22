@@ -2,10 +2,10 @@
 export const dynamic = 'force-dynamic';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
-  ArrowLeft, BookOpen, Sparkles, Map, Loader2, PanelRightClose, PanelRightOpen, AlertCircle, Upload,
+  ArrowLeft, BookOpen, Sparkles, Map, Loader2, PanelRightClose, PanelRightOpen, AlertCircle, ArrowRight, Upload,
   FileStack, Wand2, ScrollText, X, Plus, Trash2, ChevronUp, ChevronDown, FileText, PenLine,
   Pin, PinOff, Maximize2, Minimize2, MessageSquare, Wrench, UserPlus,
 } from 'lucide-react';
@@ -41,6 +41,8 @@ export default function EditChapterPage() {
   const params = useParams();
   const router = useRouter();
   const bookId = params.id as string;
+  // A freshly created book opens on its title page, not on Chapter 1.
+  const startSlug = useSearchParams().get('start');
 
   const [book, setBook] = useState<any>(null);
   const [selectedChapter, setSelectedChapter] = useState<any>(null);
@@ -115,7 +117,8 @@ export default function EditChapterPage() {
           setSelectedChapter((prev: any) =>
             prev
               ? data.chapters.find((c: any) => c.id === prev.id) || prev
-              : data.chapters.find((c: any) => (c.kind || 'CHAPTER') === 'CHAPTER') || data.chapters[0],
+              : (startSlug && data.chapters.find((c: any) => c.slug === startSlug))
+                || data.chapters.find((c: any) => (c.kind || 'CHAPTER') === 'CHAPTER') || data.chapters[0],
           );
         }
       }
@@ -287,6 +290,13 @@ export default function EditChapterPage() {
     return { front: of('FRONT_MATTER'), chapters: of('CHAPTER'), back: of('BACK_MATTER') };
   }, [book]);
 
+  /** Reading order — front matter, chapters, back matter — for the Next button. */
+  const nextSection = useMemo(() => {
+    const order = [...grouped.front, ...grouped.chapters, ...grouped.back];
+    const i = order.findIndex((c: any) => c.id === selectedChapter?.id);
+    return i >= 0 ? order[i + 1] ?? null : null;
+  }, [grouped, selectedChapter?.id]);
+
   const hasMatter = grouped.front.length > 0 || grouped.back.length > 0;
   const openFlags = (review?.continuity || []).filter(f => !dismissed.has(f.issue));
 
@@ -347,6 +357,19 @@ export default function EditChapterPage() {
         <span className="ml-auto text-xs text-slate-400 tabular-nums shrink-0">
           {totalWords.toLocaleString()} words
         </span>
+        {nextSection && (
+          <button onClick={() => setSelectedChapter(nextSection)}
+            title="Go to the next section of the book"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-[12.5px] text-slate-200 hover:text-white
+                       border border-slate-600 hover:border-indigo-500 rounded-lg transition shrink-0 max-w-[14rem]">
+            <span className="truncate">
+              Next: {nextSection.kind === 'CHAPTER'
+                ? `Chapter ${nextSection.number}${nextSection.title ? ` · ${nextSection.title}` : ''}`
+                : nextSection.title}
+            </span>
+            <ArrowRight size={13} className="shrink-0" />
+          </button>
+        )}
         {user && book?.userId === user.id && (
           <button onClick={() => setShowInvite(true)}
             className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 text-[12.5px] text-slate-300 hover:text-white

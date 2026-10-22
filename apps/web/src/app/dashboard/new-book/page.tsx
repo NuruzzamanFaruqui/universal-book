@@ -39,7 +39,7 @@ export default function NewBookPage() {
         if (!res.ok) throw new Error('Could not start a new book.');
 
         const book = await res.json();
-        router.replace(`/dashboard/books/${book.id}/edit`);
+        router.replace(`/dashboard/books/${book.id}/edit?start=title-page`);
       } catch (e: any) {
         setError(e.message || 'Could not start a new book.');
       }
