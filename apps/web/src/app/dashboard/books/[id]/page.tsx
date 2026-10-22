@@ -4,10 +4,12 @@ export const dynamic = 'force-dynamic';
 
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { BookOpen, ArrowLeft, Sparkles, Globe, Lock, DollarSign, PenLine } from 'lucide-react';
+import { ArrowLeft, Sparkles, Globe, Lock, DollarSign, PenLine, ImageIcon } from 'lucide-react';
 import Link from 'next/link';
 import { getToken as getFreshToken } from '@/lib/auth';
 import { API_URL } from '@/lib/config';
+import BookCover from '@/components/covers/BookCover';
+import CoverGenerator from '@/components/covers/CoverGenerator';
 
 
 
@@ -171,15 +173,18 @@ export default function BookDetailPage() {
         </div>
       )}
 
-      <div className="max-w-4xl mx-auto px-8 py-12">
+      <div className="max-w-4xl mx-auto px-4 sm:px-8 py-8 sm:py-12">
         {error && <div className="bg-red-500/10 border border-red-500 text-red-400 rounded-lg p-3 mb-6">{error}</div>}
 
         {book && (
           <>
-            <div className="mb-10">
-              <div className="flex items-center gap-3 mb-2">
-                <BookOpen className="text-blue-400" size={36} />
-                <h1 className={`text-4xl font-bold ${book.title ? '' : 'text-slate-500 italic'}`}>{book.title || 'Untitled book'}</h1>
+            <div className="mb-10 flex flex-col sm:flex-row gap-6">
+              <a href="#cover" className="w-28 sm:w-36 shrink-0 block rounded-lg overflow-hidden ring-1 ring-white/10 hover:ring-blue-500 transition" title="Design the cover">
+                <BookCover url={book.coverUrl} title={book.title} className="w-full" />
+              </a>
+              <div className="flex-1 min-w-0">
+              <div className="mb-2">
+                <h1 className={`text-3xl sm:text-4xl font-bold break-words ${book.title ? '' : 'text-slate-500 italic'}`}>{book.title || 'Untitled book'}</h1>
               </div>
               {book.subtitle && <p className="text-slate-400 text-lg mt-1">{book.subtitle}</p>}
               <div className="flex items-center gap-3 mt-3 flex-wrap">
@@ -212,7 +217,23 @@ export default function BookDetailPage() {
                   </button>
                 )}
               </div>
+              </div>
             </div>
+
+            <section id="cover" className="bg-slate-800/50 border border-slate-700 rounded-xl p-4 sm:p-6 mb-10 scroll-mt-24">
+              <h2 className="text-xl font-bold mb-1 flex items-center gap-2"><ImageIcon size={20} className="text-blue-400" /> Book cover</h2>
+              <p className="text-slate-400 text-sm mb-5">
+                Pick a theme and adjust the text. The saved cover appears on your book page and in the marketplace.
+              </p>
+              <CoverGenerator
+                bookId={bookId}
+                initialTitle={book.title || ''}
+                initialAuthor={book.user?.name || ''}
+                initialGenre={book.genre || ''}
+                currentCoverUrl={book.coverUrl}
+                onCoverChange={(url) => setBook((b: any) => ({ ...b, coverUrl: url }))}
+              />
+            </section>
 
             {!allChaptersGenerated && (
               <div className="bg-yellow-900/20 border border-yellow-800 rounded-xl p-4 mb-6 text-sm text-yellow-300">

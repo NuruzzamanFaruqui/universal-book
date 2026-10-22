@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic';
 import { useEffect, useState, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import BookCover from '@/components/covers/BookCover';
 import {
   BookOpen, PenSquare, Heart, MessageCircle, Repeat2,
   Sparkles, Upload, Wallet, TrendingUp, Users, Plus,
@@ -638,9 +639,7 @@ function MineTab({ creditBalance }: { creditBalance: number | null }) {
           <div className="space-y-3">
             {myBooks.map((book: any) => (
               <div key={book.id} className="bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-xl p-4 flex items-center gap-4 transition-colors">
-                <div className="w-10 h-10 bg-blue-900/50 rounded-xl flex items-center justify-center shrink-0">
-                  <BookOpen className="text-blue-400" size={16} />
-                </div>
+                <BookCover url={book.coverUrl} title={book.title} iconSize={14} className="w-10 shrink-0 rounded" />
                 <div className="flex-1 min-w-0">
                   <p className={`font-semibold text-sm truncate ${book.title ? '' : 'text-slate-500 italic'}`}>{book.title || 'Untitled book'}</p>
                   <div className="flex items-center gap-2 mt-1">

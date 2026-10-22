@@ -8,6 +8,7 @@ import { BookOpen, Star, ArrowLeft, Heart, Share2, CheckCircle, Wallet, CreditCa
 import MarketingNav from '@/components/MarketingNav';
 import { getToken as getFreshToken } from '@/lib/auth';
 import { API_URL } from '@/lib/config';
+import BookCover from '@/components/covers/BookCover';
 import { ReadingProgressApi, type BookProgress } from '@/lib/reading-progress';
 import ReadingProgressBar from '@/components/reading/ReadingProgressBar';
 import MarkAsReadButton from '@/components/reading/MarkAsReadButton';
@@ -281,11 +282,18 @@ export default function PublicBookPage() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
           {/* Left: Book Info */}
           <div className="md:col-span-2 space-y-6">
-            <div>
+            <div className="flex flex-col sm:flex-row gap-6">
+              <BookCover
+                url={book.book?.coverUrl}
+                title={book.book?.title}
+                iconSize={40}
+                className="w-36 sm:w-44 shrink-0 rounded-lg shadow-2xl shadow-black/50 ring-1 ring-white/10"
+              />
+            <div className="min-w-0">
               <span className="text-xs bg-blue-900/50 text-blue-300 px-3 py-1 rounded-full border border-blue-700">
                 {book.book?.genre}
               </span>
-              <h1 className="text-4xl font-bold mt-3">{book.book?.title}</h1>
+              <h1 className="text-3xl sm:text-4xl font-bold mt-3 break-words">{book.book?.title}</h1>
               {book.book?.subtitle && <p className="text-slate-400 text-lg mt-1">{book.book.subtitle}</p>}
               <div className="flex items-center gap-4 mt-3">
                 <Link href={`/writers/${book.book?.user?.id}`} className="text-blue-400 hover:underline text-sm">
@@ -298,6 +306,7 @@ export default function PublicBookPage() {
                   </div>
                 )}
               </div>
+            </div>
             </div>
 
             {/* Synopsis */}

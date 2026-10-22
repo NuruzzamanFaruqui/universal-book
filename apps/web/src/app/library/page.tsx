@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import BookCover from '@/components/covers/BookCover';
 import { BookOpen, ShoppingBag, Clock } from 'lucide-react';
 import AppNav from '@/components/AppNav';
 import { getToken as getFreshToken } from '@/lib/auth';
@@ -70,10 +71,14 @@ export default function LibraryPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {purchases.map((purchase: any) => (
               <Link key={purchase.id} href={`/books/${purchase.bookId}`}
-                className="bg-slate-800 border border-slate-700 hover:border-blue-500 rounded-xl p-6 transition block">
-                <div className="w-12 h-12 bg-blue-900/50 rounded-xl flex items-center justify-center mb-4">
-                  <BookOpen className="text-blue-400" size={22} />
-                </div>
+                className="bg-slate-800 border border-slate-700 hover:border-blue-500 rounded-xl p-4 sm:p-5 transition flex gap-4">
+                <BookCover
+                  url={purchase.publishedBook?.book?.coverUrl}
+                  title={purchase.publishedBook?.book?.title}
+                  iconSize={20}
+                  className="w-20 shrink-0 self-start rounded-md"
+                />
+                <div className="flex-1 min-w-0">
                 <h3 className="font-bold text-lg mb-1 line-clamp-2">{purchase.publishedBook?.book?.title}</h3>
                 <p className="text-slate-400 text-sm mb-3">by {purchase.publishedBook?.book?.user?.name || 'Anonymous'}</p>
                 {progressByBook[purchase.bookId] && (
@@ -85,11 +90,12 @@ export default function LibraryPage() {
                     />
                   </div>
                 )}
-                <div className="flex items-center justify-between text-xs text-slate-500">
+                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-slate-500">
                   <span className="flex items-center gap-1">
                     <Clock size={12} /> {new Date(purchase.createdAt).toLocaleDateString()}
                   </span>
                   <span className="text-green-400 font-semibold">Purchased — ${purchase.amount}</span>
+                </div>
                 </div>
               </Link>
             ))}
