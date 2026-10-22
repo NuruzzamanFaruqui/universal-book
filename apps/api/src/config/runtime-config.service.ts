@@ -39,8 +39,10 @@ export const MANAGED_KEYS: ManagedKeyDef[] = [
   { key: 'GCS_BUCKET', label: 'Media bucket', group: 'google', secret: false,
     placeholder: 'universal-book-media', hint: 'Covers, illustrations, video and profile photos.' },
 
+  { key: 'SENDGRID_API_KEY', label: 'SendGrid API key', group: 'email', secret: true,
+    placeholder: 'SG....', hint: 'Takes precedence over SMTP and Resend when set. Needs only Mail Send access.' },
   { key: 'RESEND_API_KEY', label: 'Resend API key', group: 'email', secret: true,
-    placeholder: 're_...', hint: 'Password reset. Leave blank if using SMTP below.' },
+    placeholder: 're_...', hint: 'Used when SendGrid and SMTP are blank.' },
   { key: 'SMTP_HOST', label: 'SMTP host', group: 'email', secret: false, placeholder: 'mail.privateemail.com' },
   { key: 'SMTP_PORT', label: 'SMTP port', group: 'email', secret: false, placeholder: '587' },
   { key: 'SMTP_USER', label: 'SMTP username', group: 'email', secret: false },
