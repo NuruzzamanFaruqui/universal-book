@@ -338,7 +338,7 @@ export default function ProfilePage() {
               <span className="text-slate-400 ml-1">Following</span>
             </div>
             <div>
-              <span className="font-bold text-white">{posts.length}</span>
+              <span className="font-bold text-white">{posts.filter((p: any) => !p.repostedBy).length}</span>
               <span className="text-slate-400 ml-1">Posts</span>
             </div>
           </div>
@@ -348,7 +348,7 @@ export default function ProfilePage() {
         <div className="flex gap-1 bg-slate-800 border border-slate-700 rounded-xl p-1 mb-6">
           <button onClick={() => setActiveTab('posts')}
             className={`flex-1 py-2 rounded-lg text-sm font-semibold transition ${activeTab === 'posts' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`}>
-            Posts ({posts.length})
+            Posts ({posts.filter((p: any) => !p.repostedBy).length})
           </button>
           <button onClick={() => setActiveTab('books')}
             className={`flex-1 py-2 rounded-lg text-sm font-semibold transition ${activeTab === 'books' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`}>
@@ -366,6 +366,23 @@ export default function ProfilePage() {
             ) : (
               posts.map((post: any) => (
                 <div key={post.id} className="bg-slate-800 border border-slate-700 rounded-xl p-5">
+                  {post.repostedBy && (
+                    <div className="flex items-center gap-2 text-xs text-slate-500 mb-3">
+                      <Repeat2 size={14} className="text-green-400" />
+                      <span>{currentUser?.id === post.repostedBy.id ? 'You reposted' : `${post.repostedBy.name} reposted`}</span>
+                    </div>
+                  )}
+                  {post.repostedBy && post.user && (
+                    <div className="flex items-center gap-2 mb-3">
+                      <Link href={`/profile/${post.user.id}`}>
+                        <Avatar user={post.user} className="w-8 h-8 shrink-0" />
+                      </Link>
+                      <Link href={`/profile/${post.user.id}`} className="font-semibold text-sm hover:text-blue-400 transition">
+                        {post.user.name}
+                      </Link>
+                      {post.user.isVerified && <span className="text-blue-400 text-xs">✓</span>}
+                    </div>
+                  )}
                   <p className="text-slate-200 text-sm leading-relaxed mb-3 whitespace-pre-wrap">
                     {post.content.split(/(#\w+)/g).map((part: string, i: number) =>
                       part.startsWith('#') ? (
@@ -386,7 +403,7 @@ export default function ProfilePage() {
                     <span className="flex items-center gap-1"><Heart size={12} /> {post.likesCount || 0}</span>
                     <span className="flex items-center gap-1"><MessageCircle size={12} /> {post.commentsCount || 0}</span>
                     <span className="flex items-center gap-1"><Repeat2 size={12} /> {post.repostsCount || 0}</span>
-                    <span className="ml-auto">{new Date(post.createdAt).toLocaleDateString()}</span>
+                    <span className="ml-auto">{new Date(post.repostedAt || post.createdAt).toLocaleDateString()}</span>
                   </div>
                 </div>
               ))
