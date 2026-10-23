@@ -7,6 +7,7 @@ import { getToken, onAuthChange, getStoredToken } from '@/lib/auth';
 import { subscribeToMessages, subscribeToPresence, ChatMessage, Unsubscribe } from '@/lib/realtime';
 import Avatar from '@/components/Avatar';
 import { API_URL, POLL } from '@/lib/config';
+import { OPEN_CHAT_EVENT } from '@/lib/chat';
 
 export default function MessagingWidget() {
   // The editor is a full-screen writing surface with its own right-hand panel;
@@ -27,6 +28,8 @@ export default function MessagingWidget() {
   // without taking `messages` as a dependency and restarting on every arrival.
   const messagesRef = useRef<Record<string, any[]>>({});
   useEffect(() => { messagesRef.current = messages; }, [messages]);
+  const openChatsRef = useRef<any[]>([]);
+  useEffect(() => { openChatsRef.current = openChats; }, [openChats]);
 
   // Track sign-in state so the widget reacts to login/logout without a reload.
   useEffect(() => {
@@ -147,12 +150,16 @@ export default function MessagingWidget() {
     } catch (e) {}
   };
 
+  // Written against updater functions and refs rather than the state values,
+  // so the window-event listener below can hold one copy of it for its whole
+  // lifetime without seeing stale state.
   const openChat = async (conv: any) => {
-    if (openChats.find(c => c.id === conv.id)) {
-      setMinimizedChats(prev => { const next = new Set(prev); next.delete(conv.id); return next; });
-      return;
-    }
-    setOpenChats(prev => [...prev.slice(-2), conv]);
+    setMinimizedChats(prev => {
+      if (!prev.has(conv.id)) return prev;
+      const next = new Set(prev); next.delete(conv.id); return next;
+    });
+    if (openChatsRef.current.some(c => c.id === conv.id)) return;
+    setOpenChats(prev => (prev.some(c => c.id === conv.id) ? prev : [...prev.slice(-2), conv]));
     try {
       const token = await getToken();
       if (!token) return;
@@ -162,6 +169,25 @@ export default function MessagingWidget() {
       if (res.ok) { const msgs = await res.json(); setMessages(prev => ({ ...prev, [conv.id]: msgs })); }
     } catch (e) {}
   };
+
+  // Lets other components open a thread here — see lib/chat.ts. Only claims
+  // the event while the widget is actually on screen, so the caller can fall
+  // back to the full messages page otherwise.
+  const visibleRef = useRef(false);
+  visibleRef.current = isLoggedIn && !!currentUser && !pathname?.endsWith('/edit');
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      const conv = (e as CustomEvent).detail;
+      if (!visibleRef.current || !conv?.id) return;
+      e.preventDefault();
+      setIsOpen(false);
+      openChat(conv);
+      fetchConversations();
+    };
+    window.addEventListener(OPEN_CHAT_EVENT, onOpen);
+    return () => window.removeEventListener(OPEN_CHAT_EVENT, onOpen);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const closeChat = (convId: string) => {
     setOpenChats(prev => prev.filter(c => c.id !== convId));

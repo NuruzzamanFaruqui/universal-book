@@ -207,7 +207,16 @@ return { reposted: true };
   }
 
   // Connection Methods
+  //
+  // One row per pair, in either direction. status is PENDING, ACCEPTED or
+  // DECLINED. A DECLINED row is kept only so the decline is not reported to the
+  // sender; it reads as "not connected" and a fresh request replaces it.
   async sendConnectionRequest(senderId: string, receiverId: string) {
+    if (senderId === receiverId) throw new BadRequestException('You cannot connect with yourself');
+
+    const target = await this.prisma.user.findUnique({ where: { id: receiverId }, select: { id: true } });
+    if (!target) throw new NotFoundException('User not found');
+
     const existing = await this.prisma.connection.findFirst({
       where: {
         OR: [
@@ -216,12 +225,25 @@ return { reposted: true };
         ],
       },
     });
-    if (existing) throw new Error('Connection already exists');
+
+    if (existing?.status === 'ACCEPTED') throw new BadRequestException('You are already connected');
+    if (existing?.status === 'PENDING') {
+      if (existing.senderId === senderId) throw new BadRequestException('Connection request already sent');
+      // They asked first. Sending one back is a yes.
+      return this.respondToConnection(senderId, existing.id, 'ACCEPTED');
+    }
+    if (existing) await this.prisma.connection.delete({ where: { id: existing.id } });
+
     const connection = await this.prisma.connection.create({
       data: { senderId, receiverId, status: 'PENDING' },
     });
     await this.prisma.notification.create({
-      data: { userId: receiverId, type: 'CONNECTION_REQUEST', message: 'sent you a connection request', linkId: senderId },
+      data: {
+        userId: receiverId,
+        type: 'CONNECTION_REQUEST',
+        message: `${await this.nameOf(senderId)} sent you a connection request`,
+        linkId: senderId,
+      },
     });
 
     await this.notifyByEmail('connection request', async () => {
@@ -237,10 +259,18 @@ return { reposted: true };
   }
 
   async respondToConnection(userId: string, connectionId: string, status: 'ACCEPTED' | 'DECLINED') {
+    if (status !== 'ACCEPTED' && status !== 'DECLINED') {
+      throw new BadRequestException('status must be ACCEPTED or DECLINED');
+    }
     const connection = await this.prisma.connection.findFirst({
       where: { id: connectionId, receiverId: userId },
     });
-    if (!connection) throw new Error('Connection request not found');
+    if (!connection) throw new NotFoundException('Connection request not found');
+    // Declining something already accepted would silently disconnect; that is
+    // what DELETE /connections/:id is for.
+    if (connection.status === 'ACCEPTED' && status === 'DECLINED') {
+      throw new BadRequestException('Already connected — remove the connection instead');
+    }
     const updated = await this.prisma.connection.update({
       where: { id: connectionId },
       data: { status },
@@ -249,7 +279,12 @@ return { reposted: true };
     // already accepted must not notify the sender a second time.
     if (status === 'ACCEPTED' && connection.status === 'PENDING') {
       await this.prisma.notification.create({
-        data: { userId: connection.senderId, type: 'CONNECTION_ACCEPTED', message: 'accepted your connection request', linkId: userId },
+        data: {
+          userId: connection.senderId,
+          type: 'CONNECTION_ACCEPTED',
+          message: `${await this.nameOf(userId)} accepted your connection request`,
+          linkId: userId,
+        },
       });
 
       await this.notifyByEmail('connection accepted', async () => {
@@ -323,6 +358,17 @@ return { reposted: true };
     });
   }
 
+  /**
+   * The relationship between the caller and `targetId`, from the caller's side:
+   *
+   *   NONE      no request, or one that was declined
+   *   PENDING   the caller sent a request that is waiting
+   *   INCOMING  the target sent the caller a request that is waiting
+   *   CONNECTED accepted
+   *
+   * A declined request reads as NONE to both sides, so the sender is never told
+   * they were turned down and can ask again later.
+   */
   async getConnectionStatus(userId: string, targetId: string) {
     const connection = await this.prisma.connection.findFirst({
       where: {
@@ -332,7 +378,17 @@ return { reposted: true };
         ],
       },
     });
-    return connection;
+
+    let state: 'NONE' | 'PENDING' | 'INCOMING' | 'CONNECTED' = 'NONE';
+    if (connection?.status === 'ACCEPTED') state = 'CONNECTED';
+    else if (connection?.status === 'PENDING') state = connection.senderId === userId ? 'PENDING' : 'INCOMING';
+
+    return {
+      state,
+      connectionId: state === 'NONE' ? null : connection!.id,
+      // The raw row, kept for any caller that read it before `state` existed.
+      ...(connection ?? {}),
+    };
   }
 
   async getOrCreateConversation(user1Id: string, user2Id: string) {

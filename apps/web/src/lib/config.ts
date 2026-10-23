@@ -24,6 +24,8 @@ export const POLL = {
   editor: 4_000,
   /** Notification bell. */
   notifications: 30_000,
+  /** Connect button on a profile, only while a request is waiting on someone. */
+  connection: 15_000,
 } as const;
 
 /** How often a signed-in tab reports itself alive. Must stay under the

@@ -22,7 +22,6 @@ const notifIcons: any = {
   NEW_FOLLOWER: <UserPlus size={16} className="text-blue-400" />,
   BOOK_PUBLISHED: <BookOpen size={16} className="text-yellow-400" />,
   POST_REPOST: <Repeat2 size={16} className="text-green-400" />,
-  NEW_FOLLOWER: <UserPlus size={16} className="text-blue-400" />,
   DIRECT_MESSAGE: <Mail size={16} className="text-slate-300" />,
 };
 
