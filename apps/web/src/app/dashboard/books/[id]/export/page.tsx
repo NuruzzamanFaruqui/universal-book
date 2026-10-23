@@ -2,13 +2,13 @@
 import AppNav from '@/components/AppNav';
 export const dynamic = 'force-dynamic';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { ArrowLeft, Download, FileText, BookOpen, File } from 'lucide-react';
 import Link from 'next/link';
 import { getToken as getFreshToken } from '@/lib/auth';
 import { API_URL } from '@/lib/config';
-import { exportBookPdf } from '@/lib/pdf-export';
+import { exportBookPdf, withPdfDeadline } from '@/lib/pdf-export';
 
 
 
@@ -19,6 +19,12 @@ export default function ExportPage() {
   const [book, setBook] = useState<any>(null);
   const [exporting, setExporting] = useState('');
   const [error, setError] = useState('');
+  const [pdfExporting, setPdfExporting] = useState(false);
+  const [pdfStatus, setPdfStatus] = useState('');
+  const [pdfWarnings, setPdfWarnings] = useState<string[]>([]);
+  const pdfController = useRef<AbortController | null>(null);
+
+  useEffect(() => () => { pdfController.current?.abort(); }, [bookId]);
 
   useEffect(() => {
     const token = localStorage.getItem('ub_token');
@@ -121,19 +127,41 @@ export default function ExportPage() {
   };
 
   const exportAsPdf = async () => {
-    setExporting('pdf');
+    if (pdfController.current || exporting) return;
+    const controller = new AbortController();
+    pdfController.current = controller;
+    setPdfExporting(true);
+    setPdfStatus('Loading your book…');
+    setPdfWarnings([]);
     setError('');
     try {
-      const token = await getFreshToken();
-      const res = await fetch(`${API_URL}/api/books/${bookId}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
+      const token = await withPdfDeadline(() => getFreshToken(), 15000, controller.signal);
+      if (!token) throw new Error('Please sign in again before exporting your PDF.');
+      const data = await withPdfDeadline(async signal => {
+        const res = await fetch(`${API_URL}/api/books/${bookId}`, {
+          headers: { Authorization: `Bearer ${token}` }, signal,
+        });
+        if (res.status === 401) throw new Error('Your session expired. Please sign in again.');
+        if (res.status === 403) throw new Error('You do not have permission to export this book.');
+        if (!res.ok) throw new Error('The book could not be loaded. Please try again.');
+        const book = await res.json();
+        if (!book || !Array.isArray(book.chapters)) throw new Error('This book is unavailable or you no longer have access to it.');
+        return book;
+      }, 15000, controller.signal);
+      await exportBookPdf(data, {
+        signal: controller.signal,
+        onProgress: message => { if (!controller.signal.aborted) setPdfStatus(message); },
+        onWarning: message => { if (!controller.signal.aborted) setPdfWarnings(previous => previous.includes(message) ? previous : [...previous, message]); },
       });
-      if (!res.ok) throw new Error('Failed to load book');
-      await exportBookPdf(await res.json());
-    } catch (err: any) {
-      setError('Export as PDF failed. Please try again.');
+    } catch (err: unknown) {
+      if (controller.signal.aborted) setPdfStatus('PDF export cancelled.');
+      else {
+        setPdfStatus('');
+        setError(err instanceof Error ? err.message : 'Export as PDF failed. Please try again.');
+      }
     } finally {
-      setExporting('');
+      pdfController.current = null;
+      setPdfExporting(false);
     }
   };
 
@@ -152,7 +180,7 @@ export default function ExportPage() {
         {error && <div className="bg-red-500/10 border border-red-500 text-red-400 rounded-lg p-3 mb-6">{error}</div>}
 
         <div className="space-y-4">
-          <button onClick={exportAsTxt} disabled={exporting === 'txt'}
+          <button onClick={exportAsTxt} disabled={exporting === 'txt' || pdfExporting}
             className="w-full flex items-center justify-between p-6 bg-slate-800 border border-slate-700 hover:border-blue-500 rounded-xl transition disabled:opacity-50">
             <div className="flex items-center gap-4">
               <FileText className="text-green-400" size={32} />
@@ -164,7 +192,7 @@ export default function ExportPage() {
             <Download size={20} className="text-slate-400" />
           </button>
 
-          <button onClick={exportAsHtml} disabled={exporting === 'html'}
+          <button onClick={exportAsHtml} disabled={exporting === 'html' || pdfExporting}
             className="w-full flex items-center justify-between p-6 bg-slate-800 border border-slate-700 hover:border-blue-500 rounded-xl transition disabled:opacity-50">
             <div className="flex items-center gap-4">
               <BookOpen className="text-blue-400" size={32} />
@@ -176,19 +204,29 @@ export default function ExportPage() {
             <Download size={20} className="text-slate-400" />
           </button>
 
-          <button onClick={exportAsPdf} disabled={exporting === 'pdf'}
+          <button onClick={exportAsPdf} disabled={pdfExporting || !!exporting}
             className="w-full flex items-center justify-between p-6 bg-slate-800 border border-slate-700 hover:border-blue-500 rounded-xl transition disabled:opacity-50">
             <div className="flex items-center gap-4">
               <File className="text-red-400" size={32} />
               <div className="text-left">
                 <div className="font-bold text-lg">Export as PDF</div>
                 <div className="text-slate-400 text-sm">
-                  {exporting === 'pdf' ? 'Building your PDF…' : 'Print-ready book with cover and contents'}
+                  {pdfExporting ? 'Building your PDF…' : 'PDF with your cover and contents'}
                 </div>
               </div>
             </div>
             <Download size={20} className="text-slate-400" />
           </button>
+          {pdfStatus && <p role="status" aria-live="polite" className="text-sm text-slate-300">{pdfStatus}</p>}
+          {pdfExporting && (
+            <button type="button" onClick={() => pdfController.current?.abort()}
+              className="text-sm text-slate-300 underline hover:text-white">Cancel PDF export</button>
+          )}
+          {pdfWarnings.length > 0 && (
+            <ul aria-label="PDF export warnings" className="list-disc pl-5 text-sm text-amber-300 space-y-1">
+              {pdfWarnings.map(message => <li key={message}>{message}</li>)}
+            </ul>
+          )}
         </div>
       </div>
     </div>

@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test:pdf": "node --test tests/pdf-export.test.cjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
@@ -39,6 +40,8 @@
   "devDependencies": {
     "@types/pdfmake": "0.3.3",
     "autoprefixer": "^10.4.27",
+    "fontkit": "^2.0.4",
+    "jsdom": "^26.1.0",
     "postcss": "^8.5.8",
     "tailwindcss": "^3.4.19"
   }
