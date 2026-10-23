@@ -1015,7 +1015,8 @@ export default function EditChapterPage() {
 }
 
 function InviteModal({ bookId, onClose }: { bookId: string; onClose: () => void }) {
-  const [following, setFollowing] = useState<any[]>([]);
+  // Co-writing is gated on an accepted connection, not a follow.
+  const [connections, setConnections] = useState<any[]>([]);
   const [collabIds, setCollabIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -1027,10 +1028,10 @@ function InviteModal({ bookId, onClose }: { bookId: string; onClose: () => void 
         const token = await getFreshToken();
         const headers = { Authorization: `Bearer ${token}` };
         const [fRes, cRes] = await Promise.all([
-          fetch(`${API_URL}/api/author-groups/following`, { headers }),
+          fetch(`${API_URL}/api/author-groups/connections`, { headers }),
           fetch(`${API_URL}/api/author-groups/book/${bookId}/collaborators`, { headers }),
         ]);
-        if (fRes.ok) setFollowing(await fRes.json());
+        if (fRes.ok) setConnections(await fRes.json());
         if (cRes.ok) setCollabIds((await cRes.json()).map((u: any) => u.id));
       } catch {}
       setLoading(false);
@@ -1065,12 +1066,13 @@ function InviteModal({ bookId, onClose }: { bookId: string; onClose: () => void 
         </div>
         {loading ? (
           <p className="px-4 py-6 text-sm text-slate-500 text-center">Loading…</p>
-        ) : following.length === 0 ? (
+        ) : connections.length === 0 ? (
           <p className="px-4 py-6 text-sm text-slate-500 text-center">
-            You aren't following anyone yet. Follow a writer to invite them.
+            You don't have any connections yet. Press Connect on a writer's profile —
+            once they accept, you can invite them here.
           </p>
         ) : (
-          following.map((u: any) => {
+          connections.map((u: any) => {
             const added = collabIds.includes(u.id);
             return (
               <div key={u.id} className="flex items-center gap-3 px-4 py-3 border-b border-slate-800">

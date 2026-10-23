@@ -208,7 +208,7 @@ The seven student features, none of which have been started except where noted:
 | Feature | Student | Note |
 |---|---|---|
 | Profile photo upload | Madison Hem | **Built.** `POST /api/users/me/photo` → GCS (`storage/`), UI on `/account`, shared `<Avatar>` everywhere. Needs bucket IAM — see below. |
-| Connect button on profiles | Sandy Seng | Backend complete; the profile page never calls it. |
+| Connect button on profiles | Sandy Seng | **Built.** `/profile/[id]` reads `GET /api/social/connections/status/:id` (`state`: NONE / PENDING / INCOMING / CONNECTED) and shows Connect → Pending → Connected + Message; Message opens the chat widget via `lib/chat.ts`. Co-writer invites now require an accepted connection, not a follow. |
 | Book cover generation | Rohan Kannan | Built: canvas generator on `/dashboard/books/[id]`, `POST /api/books/:id/cover` → GCS (`GCS_BUCKET`), shown via `components/covers/BookCover`. |
 | PDF export | Shehara Hewawasam | The export page produces `.txt` and `.html` only. |
 | Reading progress | Luka Boskovic | No model. |

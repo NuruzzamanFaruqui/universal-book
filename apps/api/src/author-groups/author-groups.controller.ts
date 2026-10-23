@@ -12,9 +12,20 @@ export class AuthorGroupsController {
     return this.authorGroupsService.getUserAuthorGroups(req.user.id);
   }
 
+  /** Accepted connections — the people who can be invited to co-write. */
+  @Get('connections')
+  async getConnections(@Request() req: any) {
+    return this.authorGroupsService.listConnections(req.user.id);
+  }
+
+  /**
+   * Old name for `connections`, from when co-writer invites were gated on
+   * following. Kept so an editor tab loaded before the switch still gets a list
+   * the invite endpoint will accept.
+   */
   @Get('following')
   async getFollowing(@Request() req: any) {
-    return this.authorGroupsService.listFollowing(req.user.id);
+    return this.authorGroupsService.listConnections(req.user.id);
   }
 
   @Get('book/:bookId/collaborators')

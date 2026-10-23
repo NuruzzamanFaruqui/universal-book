@@ -6,12 +6,26 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import BookCover from '@/components/covers/BookCover';
-import { BookOpen, ArrowLeft, Users, Heart, MessageCircle, Repeat2 } from 'lucide-react';
+import { BookOpen, Heart, MessageCircle, Repeat2, UserPlus, Clock, Check, X } from 'lucide-react';
 import { getToken as getFreshToken } from '@/lib/auth';
-import { API_URL } from '@/lib/config';
+import { API_URL, POLL } from '@/lib/config';
+import { poll } from '@/lib/realtime';
+import { openChatWindow } from '@/lib/chat';
 import Avatar from '@/components/Avatar';
 
+/**
+ * The caller's relationship with this profile, as returned by
+ * GET /api/social/connections/status/:id.
+ *
+ *   NONE      → Connect
+ *   PENDING   → Pending (we asked; hover to withdraw)
+ *   INCOMING  → Accept / Decline (they asked us)
+ *   CONNECTED → Connected + Message
+ */
+type ConnectionState = 'NONE' | 'PENDING' | 'INCOMING' | 'CONNECTED';
+interface Connection { state: ConnectionState; connectionId: string | null }
 
+const NOT_CONNECTED: Connection = { state: 'NONE', connectionId: null };
 
 export default function ProfilePage() {
   const params = useParams();
@@ -24,10 +38,29 @@ export default function ProfilePage() {
   const [following, setFollowing] = useState(false);
   const [followerCount, setFollowerCount] = useState(0);
   const [activeTab, setActiveTab] = useState<'posts' | 'books'>('posts');
+  const [connection, setConnection] = useState<Connection | null>(null);
+  const [connBusy, setConnBusy] = useState(false);
+  const [connError, setConnError] = useState('');
+  const [messageBusy, setMessageBusy] = useState(false);
+  // Right after pressing Connect the pointer is still over the button, which
+  // would immediately show "Withdraw". Arm it only once the pointer has left.
+  const [withdrawArmed, setWithdrawArmed] = useState(true);
 
   useEffect(() => {
+    setConnection(null);
     fetchData();
   }, [userId]);
+
+  const fetchConnection = async (): Promise<Connection | undefined> => {
+    const token = await getFreshToken();
+    if (!token) return NOT_CONNECTED;
+    const res = await fetch(`${API_URL}/api/social/connections/status/${userId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return undefined;
+    const data = await res.json();
+    return { state: data?.state ?? 'NONE', connectionId: data?.connectionId ?? null };
+  };
 
   const fetchData = async () => {
     try {
@@ -44,22 +77,107 @@ export default function ProfilePage() {
       }
       if (postsRes.ok) setPosts(await postsRes.json());
       if (token) {
-        const userRes = await fetch(`${API_URL}/api/users/me`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const [userRes, conn] = await Promise.all([
+          fetch(`${API_URL}/api/users/me`, { headers: { Authorization: `Bearer ${token}` } }),
+          fetchConnection().catch(() => undefined),
+        ]);
         if (userRes.ok) {
           const me = await userRes.json();
           setCurrentUser(me);
           setFollowing(!!profileData?.followers?.some((f: any) => f.followerId === me.id));
         }
+        setConnection(conn ?? NOT_CONNECTED);
+      } else {
+        setConnection(NOT_CONNECTED);
       }
     } catch (e) {}
     finally { setLoading(false); }
   };
 
-  const handleFollow = async () => {
+  // While a request is waiting on the other person, keep checking so the
+  // button turns into Connected (or back into Connect) without a refresh.
+  // Paused while our own action is in flight, so a poll can't race it.
+  const waiting = !connBusy && (connection?.state === 'PENDING' || connection?.state === 'INCOMING');
+  useEffect(() => {
+    if (!waiting) return;
+    return poll<Connection>({
+      interval: POLL.connection,
+      fetcher: fetchConnection,
+      onData: (next) => setConnection((prev) =>
+        prev && prev.state === next.state && prev.connectionId === next.connectionId ? prev : next,
+      ),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [waiting, userId]);
+
+  const requireLogin = async () => {
     const token = await getFreshToken();
-    if (!token) { router.push('/auth/login'); return; }
+    if (!token) router.push('/auth/login');
+    return token;
+  };
+
+  /** Runs a connection action, then re-reads the status from the server. */
+  const connectionAction = async (
+    request: (token: string) => Promise<Response>,
+    optimistic?: Connection,
+  ) => {
+    const token = await requireLogin();
+    if (!token || connBusy) return;
+    setConnBusy(true);
+    setConnError('');
+    const before = connection;
+    if (optimistic) setConnection(optimistic);
+    try {
+      const res = await request(token);
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        setConnError(body?.message || 'Something went wrong. Please try again.');
+      }
+    } catch {
+      setConnError('Could not reach the server. Please try again.');
+    }
+    // Whatever happened, the server's answer is the truth — this also repairs
+    // a stale button if someone else changed the connection meanwhile.
+    const fresh = await fetchConnection().catch(() => undefined);
+    setConnection(fresh ?? before);
+    setConnBusy(false);
+  };
+
+  const handleConnect = () => {
+    setWithdrawArmed(false);
+    return connectionAction(
+      (token) => fetch(`${API_URL}/api/social/connections/${userId}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      }),
+      { state: 'PENDING', connectionId: null },
+    );
+  };
+
+  const handleWithdraw = () =>
+    connection?.connectionId &&
+    connectionAction(
+      (token) => fetch(`${API_URL}/api/social/connections/${connection.connectionId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      }),
+      NOT_CONNECTED,
+    );
+
+  const handleRespond = (status: 'ACCEPTED' | 'DECLINED') =>
+    connection?.connectionId &&
+    connectionAction(
+      (token) => fetch(`${API_URL}/api/social/connections/${connection.connectionId}/respond`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ status }),
+      }),
+      status === 'ACCEPTED' ? { state: 'CONNECTED', connectionId: connection.connectionId } : NOT_CONNECTED,
+    );
+
+  const handleFollow = async () => {
+    const token = await requireLogin();
+    if (!token) return;
     const res = await fetch(`${API_URL}/api/marketplace/writers/${userId}/follow`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${token}` },
@@ -71,18 +189,23 @@ export default function ProfilePage() {
     }
   };
 
+  /** Opens the thread in the floating chat widget, or the messages page if it isn't showing. */
   const handleMessage = async () => {
-    const token = await getFreshToken();
-    if (!token) { router.push('/auth/login'); return; }
-    const res = await fetch(`${API_URL}/api/social/conversations`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify({ userId }),
-    });
-    if (res.ok) {
-      const conv = await res.json();
-      router.push(`/messages/${conv.id}`);
-    }
+    const token = await requireLogin();
+    if (!token || messageBusy) return;
+    setMessageBusy(true);
+    try {
+      const res = await fetch(`${API_URL}/api/social/conversations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ userId }),
+      });
+      if (res.ok) {
+        const conv = await res.json();
+        if (!openChatWindow(conv)) router.push(`/messages/${conv.id}`);
+      }
+    } catch {}
+    setMessageBusy(false);
   };
 
   if (loading) return (
@@ -102,6 +225,67 @@ export default function ProfilePage() {
 
   const publishedBooks = profile.books?.filter((b: any) => b.published?.isPublic);
   const isOwnProfile = currentUser?.id === userId;
+  const firstName = profile.name?.split(' ')[0] || 'This writer';
+
+  const btn = 'inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold transition disabled:opacity-60 disabled:cursor-not-allowed';
+
+  const connectControls = () => {
+    // Status still loading: hold the space so the row doesn't jump.
+    if (!connection) {
+      return <div className={`${btn} w-28 bg-slate-700/60 animate-pulse`} aria-hidden>&nbsp;</div>;
+    }
+    switch (connection.state) {
+      case 'CONNECTED':
+        return (
+          <>
+            <span data-testid="connection-state" data-state="CONNECTED"
+              className={`${btn} border border-emerald-700 bg-emerald-900/30 text-emerald-300 cursor-default`}>
+              <Check size={15} /> Connected
+            </span>
+            <button onClick={handleMessage} disabled={messageBusy}
+              className={`${btn} bg-blue-600 hover:bg-blue-500 text-white`}>
+              <MessageCircle size={15} /> Message
+            </button>
+          </>
+        );
+      case 'PENDING':
+        return (
+          <button onClick={() => withdrawArmed && handleWithdraw()}
+            onMouseLeave={() => setWithdrawArmed(true)}
+            disabled={connBusy || !connection.connectionId}
+            data-testid="connection-state" data-state="PENDING"
+            title={withdrawArmed ? 'Request sent — click to withdraw' : 'Request sent'}
+            className={`${btn} border border-amber-600/70 bg-amber-900/20 text-amber-300 ${
+              withdrawArmed ? 'group hover:border-red-600 hover:bg-red-900/20 hover:text-red-300' : 'cursor-default'
+            }`}>
+            <span className="inline-flex items-center gap-1.5 group-hover:hidden"><Clock size={15} /> Pending</span>
+            <span className="hidden items-center gap-1.5 group-hover:inline-flex"><X size={15} /> Withdraw</span>
+          </button>
+        );
+      case 'INCOMING':
+        return (
+          <>
+            <button onClick={() => handleRespond('ACCEPTED')} disabled={connBusy}
+              data-testid="connection-state" data-state="INCOMING"
+              className={`${btn} bg-emerald-600 hover:bg-emerald-500 text-white`}>
+              <Check size={15} /> Accept
+            </button>
+            <button onClick={() => handleRespond('DECLINED')} disabled={connBusy}
+              className={`${btn} border border-slate-600 text-slate-300 hover:border-red-500 hover:text-red-400`}>
+              Decline
+            </button>
+          </>
+        );
+      default:
+        return (
+          <button onClick={handleConnect} disabled={connBusy}
+            data-testid="connection-state" data-state="NONE"
+            className={`${btn} bg-blue-600 hover:bg-blue-500 text-white`}>
+            <UserPlus size={15} /> Connect
+          </button>
+        );
+    }
+  };
 
   return (
     <div className="min-h-screen bg-slate-900 text-white">
@@ -110,17 +294,16 @@ export default function ProfilePage() {
       <div className="max-w-3xl mx-auto px-4 py-6">
         {/* Profile Header */}
         <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 mb-6">
-          <div className="flex items-start justify-between mb-4">
+          <div className="flex flex-wrap items-start justify-between gap-4 mb-4">
             <Avatar user={profile} className="w-20 h-20 text-3xl shrink-0" />
             {!isOwnProfile && (
-              <div className="flex gap-2">
-                <button onClick={handleMessage}
-                  className="px-4 py-2 border border-slate-600 hover:border-blue-500 rounded-xl text-sm transition">
-                  💌 Message
-                </button>
+              <div className="flex flex-wrap justify-end gap-2">
+                {connectControls()}
                 <button onClick={handleFollow}
-                  className={`px-4 py-2 rounded-xl text-sm font-semibold transition ${
-                    following ? 'border border-red-700 text-red-400 hover:bg-red-900/20' : 'bg-blue-600 hover:bg-blue-500'
+                  className={`${btn} font-medium ${
+                    following
+                      ? 'border border-slate-600 text-slate-300 hover:border-red-700 hover:text-red-400'
+                      : 'border border-slate-600 text-slate-200 hover:border-blue-500'
                   }`}>
                   {following ? 'Unfollow' : 'Follow'}
                 </button>
@@ -133,10 +316,15 @@ export default function ProfilePage() {
             )}
           </div>
 
+          {!isOwnProfile && connection?.state === 'INCOMING' && (
+            <p className="text-sm text-emerald-300 mb-3">{firstName} wants to connect with you.</p>
+          )}
+          {connError && <p role="alert" className="text-sm text-red-400 mb-3">{connError}</p>}
+
           <h1 className="text-2xl font-bold mb-1">{profile.name}</h1>
           {profile.bio && <p className="text-slate-400 text-sm mb-3">{profile.bio}</p>}
 
-          <div className="flex items-center gap-6 text-sm">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
             <div>
               <span className="font-bold text-white">{publishedBooks?.length || 0}</span>
               <span className="text-slate-400 ml-1">Books</span>

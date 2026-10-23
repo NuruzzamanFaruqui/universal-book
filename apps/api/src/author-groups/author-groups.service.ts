@@ -59,11 +59,14 @@ export class AuthorGroupsService {
     const group = await this.prisma.authorGroup.findFirst({
       where: { id: groupId, createdBy: ownerId },
     });
-    if (!group) throw new Error('Only the group owner can invite members');
+    if (!group) throw new ForbiddenException('Only the group owner can invite members');
+    if (!(await this.areConnected(ownerId, inviteeId))) {
+      throw new BadRequestException('You can only invite your connections');
+    }
     const existing = await this.prisma.authorGroupMember.findUnique({
       where: { userId_groupId: { userId: inviteeId, groupId } },
     });
-    if (existing) throw new Error('User is already a member');
+    if (existing) throw new BadRequestException('User is already a member');
     return this.prisma.authorGroupMember.create({
       data: { userId: inviteeId, groupId, role },
       include: {
@@ -93,13 +96,35 @@ export class AuthorGroupsService {
     });
   }
 
-  /** People the user follows, for the invite picker. */
-  async listFollowing(userId: string) {
-    const rows = await this.prisma.writerFollow.findMany({
-      where: { followerId: userId },
-      include: { writer: { select: { id: true, name: true, avatarUrl: true, profilePhoto: true } } },
+  /**
+   * The user's accepted connections, for the co-writer invite picker.
+   *
+   * Co-writing gives edit access to a manuscript, so it is gated on a
+   * connection (both people agreed) rather than a follow (one-sided).
+   */
+  async listConnections(userId: string) {
+    const select = { id: true, name: true, avatarUrl: true, profilePhoto: true };
+    const rows = await this.prisma.connection.findMany({
+      where: { status: 'ACCEPTED', OR: [{ senderId: userId }, { receiverId: userId }] },
+      include: { sender: { select }, receiver: { select } },
+      orderBy: { updatedAt: 'desc' },
     });
-    return rows.map(r => r.writer);
+    return rows.map(r => (r.senderId === userId ? r.receiver : r.sender));
+  }
+
+  /** True when the two users have an accepted connection, in either direction. */
+  private async areConnected(a: string, b: string) {
+    const row = await this.prisma.connection.findFirst({
+      where: {
+        status: 'ACCEPTED',
+        OR: [
+          { senderId: a, receiverId: b },
+          { senderId: b, receiverId: a },
+        ],
+      },
+      select: { id: true },
+    });
+    return !!row;
   }
 
   /** Everyone (except the owner) who can co-edit this book. Owner only. */
@@ -114,7 +139,7 @@ export class AuthorGroupsService {
     return members.map(m => m.user);
   }
 
-  /** Invite a followed user to co-write a book. Creates the book's group on first use. */
+  /** Invite a connection to co-write a book. Creates the book's group on first use. */
   async inviteToBook(bookId: string, ownerId: string, inviteeId: string) {
     const book = await this.prisma.book.findUnique({
       where: { id: bookId },
@@ -124,10 +149,9 @@ export class AuthorGroupsService {
     if (book.userId !== ownerId) throw new ForbiddenException('Only the book owner can invite collaborators');
     if (inviteeId === ownerId) throw new BadRequestException('You cannot invite yourself');
 
-    const follows = await this.prisma.writerFollow.findUnique({
-      where: { followerId_writerId: { followerId: ownerId, writerId: inviteeId } },
-    });
-    if (!follows) throw new BadRequestException('You can only invite people you follow');
+    if (!(await this.areConnected(ownerId, inviteeId))) {
+      throw new BadRequestException('You can only invite your connections');
+    }
 
     let group = await this.prisma.authorGroup.findFirst({ where: { bookId, createdBy: ownerId } });
     if (!group) {
