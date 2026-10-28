@@ -33,8 +33,52 @@ export class SocialService {
     return post;
   }
 
+    /** Shared `include` for posts shown in timelines (feed + profile). */
+  private readonly timelinePostInclude = {
+    user: { select: { id: true, name: true, avatarUrl: true, profilePhoto: true, isVerified: true } },
+    book: { include: { published: { select: { price: true, isPublic: true } }, chapters: { select: { id: true } } } },
+    likes: { select: { userId: true } },
+    reposts: { select: { userId: true } },
+    comments: {
+      include: { user: { select: { id: true, name: true, avatarUrl: true, profilePhoto: true } } },
+      orderBy: { createdAt: 'asc' },
+      take: 3,
+    },
+    _count: { select: { comments: true, likes: true, reposts: true } },
+  } as const;
+
+  private readonly reposterSelect = {
+    id: true, name: true, avatarUrl: true, profilePhoto: true, isVerified: true,
+  } as const;
+
+  /**
+   * Merge original posts and reposts into one chronological timeline.
+   */
+  private mergeTimeline(posts: any[], reposts: any[], skip: number, limit: number) {
+    const entries = new Map<string, any>();
+    for (const p of posts) {
+      entries.set(p.id, { ...p, repostedBy: null, repostedAt: null, sortAt: p.createdAt });
+    }
+    for (const r of reposts) {
+      const { post, user: reposter, createdAt } = r;
+      if (!post || post.userId === r.userId) continue;
+      const existing = entries.get(post.id);
+      if (!existing) {
+        entries.set(post.id, { ...post, repostedBy: reposter, repostedAt: createdAt, sortAt: createdAt });
+      } else if (createdAt > existing.sortAt) {
+        existing.repostedBy = reposter;
+        existing.repostedAt = createdAt;
+        existing.sortAt = createdAt;
+      }
+    }
+    return [...entries.values()]
+      .sort((a, b) => +new Date(b.sortAt) - +new Date(a.sortAt))
+      .slice(skip, skip + limit);
+  }
+
   async getFeed(userId: string, page = 1, limit = 20) {
     const skip = (page - 1) * limit;
+    const window = skip + limit;
     const connections = await this.prisma.connection.findMany({
       where: {
         OR: [{ senderId: userId, status: 'ACCEPTED' }, { receiverId: userId, status: 'ACCEPTED' }],
@@ -45,28 +89,33 @@ export class SocialService {
     const followingIds = following.map(f => f.writerId);
     const feedIds = [...new Set([...connectedIds, ...followingIds, userId])];
 
-    const [posts, total] = await Promise.all([
+    // Posts written by people in the feed, plus posts those people reposted.
+    const [posts, reposts, total] = await Promise.all([
       this.prisma.post.findMany({
         where: { userId: { in: feedIds } },
+        include: this.timelinePostInclude,
+        orderBy: { createdAt: 'desc' },
+        take: window,
+      }),
+      this.prisma.postRepost.findMany({
+        where: { userId: { in: feedIds } },
         include: {
-          user: { select: { id: true, name: true, avatarUrl: true, profilePhoto: true, isVerified: true } },
-          book: { include: { published: { select: { price: true, isPublic: true } }, chapters: { select: { id: true } } } },
-          likes: { select: { userId: true } },
-          reposts: { select: { userId: true } },
-          comments: {
-            include: { user: { select: { id: true, name: true, avatarUrl: true, profilePhoto: true } } },
-            orderBy: { createdAt: 'asc' },
-            take: 3,
-          },
-          _count: { select: { comments: true, likes: true, reposts: true } },
+          user: { select: this.reposterSelect },
+          post: { include: this.timelinePostInclude },
         },
         orderBy: { createdAt: 'desc' },
-        skip,
-        take: limit,
+        take: window,
       }),
-      this.prisma.post.count({ where: { userId: { in: feedIds } } }),
+      this.prisma.post.count({
+        where: {
+          OR: [
+            { userId: { in: feedIds } },
+            { reposts: { some: { userId: { in: feedIds } } } },
+          ],
+        },
+      }),
     ]);
-    return { posts, total, page, limit };
+    return { posts: this.mergeTimeline(posts, reposts, skip, limit), total, page, limit };
   }
 
   async getExploreFeed(page = 1, limit = 20) {
@@ -96,24 +145,25 @@ export class SocialService {
 
   async getUserPosts(userId: string, page = 1, limit = 20) {
     const skip = (page - 1) * limit;
-    return this.prisma.post.findMany({
-      where: { userId },
-      include: {
-        user: { select: { id: true, name: true, avatarUrl: true, profilePhoto: true, isVerified: true } },
-        book: { include: { published: { select: { price: true, isPublic: true } } } },
-        likes: { select: { userId: true } },
-        reposts: { select: { userId: true } },
-        comments: {
-          include: { user: { select: { id: true, name: true, avatarUrl: true, profilePhoto: true } } },
-          orderBy: { createdAt: 'asc' },
-          take: 3,
+    const window = skip + limit;
+    const [posts, reposts] = await Promise.all([
+      this.prisma.post.findMany({
+        where: { userId },
+        include: this.timelinePostInclude,
+        orderBy: { createdAt: 'desc' },
+        take: window,
+      }),
+      this.prisma.postRepost.findMany({
+        where: { userId },
+        include: {
+          user: { select: this.reposterSelect },
+          post: { include: this.timelinePostInclude },
         },
-        _count: { select: { comments: true, likes: true, reposts: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-      skip,
-      take: limit,
-    });
+        orderBy: { createdAt: 'desc' },
+        take: window,
+      }),
+    ]);
+    return this.mergeTimeline(posts, reposts, skip, limit);
   }
 
   async likePost(userId: string, postId: string) {
@@ -155,6 +205,8 @@ export class SocialService {
   }
 
   async repostPost(userId: string, postId: string) {
+    const target = await this.prisma.post.findUnique({ where: { id: postId }, select: { id: true } });   // ← new
+    if (!target) throw new NotFoundException('Post not found');                                          // ← new
     const existing = await this.prisma.postRepost.findUnique({ where: { userId_postId: { userId, postId } } });
     if (existing) {
       await this.prisma.postRepost.delete({ where: { userId_postId: { userId, postId } } });

@@ -283,6 +283,7 @@ function FeedTab({ user }: { user: any }) {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error();
+      if (kind === 'repost') fetchPosts(false);
     } catch {
       fetchPosts(false); // Revert on failure
     }
@@ -369,6 +370,21 @@ function FeedTab({ user }: { user: any }) {
 
           return (
             <div key={post.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-5 hover:border-slate-700 transition-colors">
+                            {/* Repost banner */}
+              {post.repostedBy && (
+                <div className="flex items-center gap-2 text-xs text-slate-500 mb-3">
+                  <Repeat2 size={14} className="text-green-400" />
+                  {post.repostedBy.id === user?.id ? (
+                    <span>You reposted</span>
+                  ) : (
+                    <span>
+                      <Link href={`/profile/${post.repostedBy.id}`} className="font-semibold hover:text-blue-400 transition-colors">
+                        {post.repostedBy.name}
+                      </Link>{' '}reposted
+                    </span>
+                  )}
+                </div>
+              )}
               {/* Header */}
               <div className="flex items-start gap-3 mb-3">
                 <Link href={`/profile/${post.user?.id}`}>
