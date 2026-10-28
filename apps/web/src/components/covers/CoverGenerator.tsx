@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { Download, ImageIcon, Loader2, Trash2, Check } from 'lucide-react';
 import { COVER_THEMES, CoverThemeId, DEFAULT_THEME, getTheme } from '@/lib/covers/themes';
 import { canvasToPng, drawCover } from '@/lib/covers/render';
@@ -179,6 +180,12 @@ export default function CoverGenerator({
           >
             <Download size={16} /> Download PNG
           </button>
+          <Link
+            href={`/dashboard/books/${bookId}/export`}
+            className="flex items-center justify-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm font-semibold transition flex-1 sm:flex-none"
+          >
+            <Download size={16} /> Export PDF
+          </Link>
           {currentCoverUrl && (
             <button
               type="button"
